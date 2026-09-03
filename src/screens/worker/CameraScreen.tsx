@@ -1,18 +1,22 @@
-import { CameraView } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Camera, useCameraDevice } from 'react-native-vision-camera';
 
 import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
 import CameraShutterButton from '@/components/worker/CameraShutterButton';
 import CaptureToast from '@/components/worker/CaptureToast';
-import { colors } from '@/constants/theme';
+import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureController';
 
 const DEFAULT_TASK_LABEL = 'Column grid L4';
 
 export default function CameraScreen() {
-  const cameraRef = useRef<CameraView>(null);
+  const cameraRef = useRef<Camera>(null);
+  const device = useCameraDevice('back');
   const { capturePhoto, lastSavedLabel, clearLastSavedLabel } = usePhotoCaptureController();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!lastSavedLabel) return;
@@ -27,7 +31,13 @@ export default function CameraScreen() {
   return (
     <CameraPermissionGate>
       <View style={styles.flex}>
-        <CameraView ref={cameraRef} style={styles.flex} facing="back" />
+        {device && <Camera ref={cameraRef} style={styles.flex} device={device} isActive photo />}
+
+        <View style={[styles.taskBar, { top: insets.top + spacing.sm }]}>
+          <Ionicons name="location" size={13} color={colors.white} />
+          <Text style={styles.taskText}>{DEFAULT_TASK_LABEL}</Text>
+        </View>
+
         <CameraShutterButton onPress={handleShutterPress} />
         <CaptureToast message={lastSavedLabel ? `Saved · ${lastSavedLabel}` : null} />
       </View>
@@ -37,4 +47,16 @@ export default function CameraScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.black },
+  taskBar: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 3,
+  },
+  taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
 });

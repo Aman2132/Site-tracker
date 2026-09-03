@@ -22,7 +22,7 @@ export default function ActivityScreen() {
         keyExtractor={event => event.id}
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}
         renderItem={({ item }) => <ActivityFeedItem event={item} />}
-        ListEmptyComponent={<EmptyState message="No activity yet." />}
+        ListEmptyComponent={<EmptyState icon="pulse-outline" message="No activity yet." />}
       />
     </ScreenContainer>
   );

@@ -1,7 +1,8 @@
 import React, { PropsWithChildren } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, layout } from '@/constants/theme';
+import { colors, spacing } from '@/constants/theme';
 
 interface ScreenContainerProps {
   style?: ViewStyle;
@@ -9,16 +10,18 @@ interface ScreenContainerProps {
   padded?: boolean;
 }
 
-/** Standard screen wrapper: background color + safe top padding for all tab screens. */
+/** Standard screen wrapper: background color + safe-area-aware top padding for all tab screens. */
 export default function ScreenContainer({
   children,
   style,
   padded = true,
 }: PropsWithChildren<ScreenContainerProps>) {
-  return <View style={[styles.base, padded && styles.padded, style]}>{children}</View>;
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.base, padded && { paddingTop: insets.top + spacing.sm }, style]}>{children}</View>
+  );
 }
 
 const styles = StyleSheet.create({
   base: { flex: 1, backgroundColor: colors.background },
-  padded: { paddingTop: layout.screenTopPadding },
 });
