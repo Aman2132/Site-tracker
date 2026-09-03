@@ -1,21 +1,29 @@
-import { useCameraPermissions } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { PropsWithChildren } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCameraPermission } from 'react-native-vision-camera';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 
 /** Gates its children behind camera permission, requesting it inline if missing. */
 export default function CameraPermissionGate({ children }: PropsWithChildren<object>) {
-  const [permission, requestPermission] = useCameraPermissions();
+  const { hasPermission, requestPermission } = useCameraPermission();
 
-  if (!permission) return <View style={styles.flex} />;
-
-  if (!permission.granted) {
+  if (!hasPermission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.text}>Camera access is needed to take site photos.</Text>
-        <TouchableOpacity style={styles.button} onPress={requestPermission}>
-          <Text style={styles.buttonText}>Allow camera</Text>
+        <LinearGradient colors={gradients.worker} style={[styles.iconWrap, glow(colors.worker, 0.45)]}>
+          <Ionicons name="camera" size={28} color={colors.white} />
+        </LinearGradient>
+        <Text style={styles.title}>Camera access needed</Text>
+        <Text style={styles.text}>
+          Site Tracker uses the camera to take geotagged photos of your work for the record.
+        </Text>
+        <TouchableOpacity onPress={requestPermission} activeOpacity={0.85}>
+          <LinearGradient colors={gradients.worker} style={[styles.button, glow(colors.worker, 0.4)]}>
+            <Text style={styles.buttonText}>Allow camera</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     );
@@ -25,7 +33,6 @@ export default function CameraPermissionGate({ children }: PropsWithChildren<obj
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.black },
   center: {
     flex: 1,
     alignItems: 'center',
@@ -33,12 +40,22 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
     backgroundColor: colors.black,
   },
-  text: { color: colors.white, textAlign: 'center', marginBottom: spacing.lg },
-  button: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.xl + 4,
+  iconWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
   },
-  buttonText: { color: colors.white, fontWeight: '600' },
+  title: { ...typography.heading, color: colors.white, marginBottom: spacing.sm },
+  text: {
+    fontFamily: fontFamily.regular,
+    color: 'rgba(255,255,255,0.65)',
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+    lineHeight: 19,
+  },
+  button: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.xl + 4 },
+  buttonText: { fontFamily: fontFamily.bold, color: colors.white },
 });

@@ -6,6 +6,26 @@ Claude) writing code in this repo. Read it before adding a screen, a store,
 or a device integration — it exists so the codebase stays understandable to
 a developer who has never seen it before.
 
+## ⚠️ Dev machine security note — Memory Integrity is disabled
+
+On 2026-09-02, Windows **Memory Integrity (Core Isolation / HVCI)** was
+disabled on this development PC (registry:
+`HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity`,
+`Enabled=0`) so the Android emulator's WHPX hypervisor could get exclusive
+access — with it on, the emulator failed with
+`WHPX: Failed to setup partition, hr=80070005`.
+
+This is a real security tradeoff, not a cosmetic setting: Memory Integrity
+protects against kernel-level exploits and rootkits. It should be
+re-enabled as soon as Android emulator work on this machine isn't needed.
+
+**Standing instruction (do not remove until resolved): at the start of
+every session working in this repo, ask the user whether Memory Integrity
+has been turned back on yet.** Keep asking every session until they
+confirm — via Windows Security → Device security → Core isolation → Memory
+integrity, or setting that same registry value back to `1` and rebooting —
+then delete this section.
+
 ## Non-negotiables
 
 1. **TypeScript everywhere.** No new `.js`/`.jsx` files under `src/` or at
@@ -42,7 +62,7 @@ src/
                   screens call these functions and don't care what's behind
                   them.
   services/       Device/OS integration with no app state: expo-location
-                  wrapper, expo-camera EXIF writer, permission requests,
+                  wrapper, offline EXIF writer, permission requests,
                   AsyncStorage read/write. Pure, mockable, no React.
   controllers/    React hooks that orchestrate: call a service and/or an
                   api/ function, then write the result into a store. Screens

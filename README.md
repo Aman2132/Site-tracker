@@ -31,14 +31,19 @@ backend means editing `src/api/*.ts` only.
 
 ## Run it
 
+Uses `react-native-vision-camera` and `@rnmapbox/maps`, both of which need
+native code Expo Go can't run — this is a custom dev-client build, not the
+managed Expo Go workflow.
+
 ```
+cp .env.example .env   # fill in your Mapbox tokens, see .env.example
 npm install
-npx expo start
+npx expo prebuild -p android
+npm run android
 ```
 
-Scan the QR code with Expo Go on an Android phone. On first launch, grant
-"Allow all the time" location and camera permission for the worker flows to
-work.
+On first launch, grant "Allow all the time" location and camera permission
+for the worker flows to work.
 
 ```
 npm run typecheck   # tsc --noEmit

@@ -1,5 +1,5 @@
-import type { CameraView } from 'expo-camera';
 import { useCallback, useState } from 'react';
+import type { Camera } from 'react-native-vision-camera';
 
 import { DEFAULT_COORDS } from '@/constants/config';
 import { CURRENT_WORKER_ID } from '@/constants/session';
@@ -18,18 +18,16 @@ export function usePhotoCaptureController() {
   const [lastSavedLabel, setLastSavedLabel] = useState<string | null>(null);
 
   const capturePhoto = useCallback(
-    async (camera: CameraView, task: string) => {
-      const [photo, fix] = await Promise.all([
-        camera.takePictureAsync({ quality: 0.85 }),
-        getCurrentFix().catch(() => null),
-      ]);
+    async (camera: Camera, task: string) => {
+      const [photo, fix] = await Promise.all([camera.takePhoto(), getCurrentFix().catch(() => null)]);
       if (!photo) return;
 
       const lat = fix?.lat ?? DEFAULT_COORDS.lat;
       const lng = fix?.lng ?? DEFAULT_COORDS.lng;
       const accuracy = fix?.accuracy ?? 9999;
 
-      const geoTaggedUri = await writeGeotag(photo.uri, { lat, lng }).catch(() => photo.uri);
+      const photoUri = `file://${photo.path}`;
+      const geoTaggedUri = await writeGeotag(photoUri, { lat, lng }).catch(() => photoUri);
 
       addPhoto({
         uri: geoTaggedUri,

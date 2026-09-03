@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
@@ -6,7 +7,7 @@ import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import ScreenTitle from '@/components/common/ScreenTitle';
 import PhotoGridCell from '@/components/owner/PhotoGridCell';
-import { colors } from '@/constants/theme';
+import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { usePhotoStore } from '@/store/usePhotoStore';
 
@@ -21,6 +22,7 @@ export default function PhotosScreen() {
       <ScreenTitle>Photos</ScreenTitle>
       {pendingCount > 0 && (
         <View style={styles.pendingBar}>
+          <Ionicons name="time-outline" size={13} color={colors.warningText} />
           <Text style={styles.pendingText}>
             {pendingCount} photo{pendingCount > 1 ? 's' : ''} waiting on a connection
           </Text>
@@ -32,7 +34,9 @@ export default function PhotosScreen() {
         numColumns={3}
         contentContainerStyle={{ padding: 8 }}
         renderItem={({ item }) => <PhotoGridCell photo={item} />}
-        ListEmptyComponent={<EmptyState message="No photos yet. Take one from the worker Camera tab." />}
+        ListEmptyComponent={
+          <EmptyState icon="images-outline" message="No photos yet. Take one from the worker Camera tab." />
+        }
       />
     </ScreenContainer>
   );
@@ -40,10 +44,15 @@ export default function PhotosScreen() {
 
 const styles = StyleSheet.create({
   pendingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
     backgroundColor: colors.warningBg,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginBottom: 4,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
   },
-  pendingText: { color: colors.warningText, fontSize: 12 },
+  pendingText: { fontFamily: fontFamily.medium, color: colors.warningText, fontSize: 12 },
 });

@@ -1,14 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
 
-import { colors, radius, spacing } from '@/constants/theme';
+import { colors, fontFamily, glow, gradients, radius, spacing } from '@/constants/theme';
 import { useRoleStore } from '@/store/useRoleStore';
 import { Role } from '@/types/domain';
 
 interface DevRoleSwitchButtonProps {
   targetRole: Role;
   label: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -19,18 +21,28 @@ interface DevRoleSwitchButtonProps {
 export default function DevRoleSwitchButton({ targetRole, label, style }: DevRoleSwitchButtonProps) {
   const setRole = useRoleStore(state => state.setRole);
   return (
-    <TouchableOpacity style={[styles.button, style]} onPress={() => setRole(targetRole)}>
-      <Text style={styles.label}>{label}</Text>
+    <TouchableOpacity onPress={() => setRole(targetRole)} activeOpacity={0.85} style={style}>
+      <LinearGradient
+        colors={gradients.ink}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.button, glow(colors.ink, 0.4)]}
+      >
+        <Ionicons name="swap-horizontal" size={15} color={colors.white} />
+        <Text style={styles.label}>{label}</Text>
+      </LinearGradient>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: colors.text,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md - 2,
-    borderRadius: radius.xl,
+    borderRadius: radius.pill,
   },
-  label: { color: colors.white, fontSize: 12, fontWeight: '600' },
+  label: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 12 },
 });

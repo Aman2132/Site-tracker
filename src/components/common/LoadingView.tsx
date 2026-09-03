@@ -7,11 +7,11 @@ import { colors } from '@/constants/theme';
 export default function LoadingView() {
   return (
     <View style={styles.center}>
-      <ActivityIndicator color={colors.primary} />
+      <ActivityIndicator color={colors.primary} size="large" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
 });

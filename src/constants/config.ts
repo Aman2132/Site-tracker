@@ -32,3 +32,6 @@ export const ACTIVITY_THRESHOLDS = {
 export const MOCK_NETWORK_DELAY_MS = 400;
 
 export const DEFAULT_COORDS: { lat: number; lng: number } = { lat: 28.6139, lng: 77.209 };
+
+/** Public Mapbox token, inlined at build time — see .env.example. */
+export const MAPBOX_PUBLIC_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
