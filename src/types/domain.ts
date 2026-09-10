@@ -18,11 +18,31 @@ export interface GeoFix extends GeoPoint {
   accuracy: number;
 }
 
-export interface Person {
+/** A background-tracking fix — adds the activity signal a one-shot GeoFix doesn't need. */
+export interface TrackedFix extends GeoFix {
+  kind: ActivityKind;
+}
+
+/**
+ * Static roster fields — this is exactly the shape of a Firestore
+ * `people/{uid}` document, keyed by the person's Firebase Auth uid.
+ */
+export interface PersonProfile {
   id: string;
   name: string;
+  /** Job title, e.g. "Mason" — not to be confused with appRole. */
   role: string;
   color: string;
+  /** Owner vs worker — decides which app experience they get after sign-in. */
+  appRole: Role;
+}
+
+/**
+ * Full crew-map shape: static profile + live tracking fields. The live
+ * fields come from Realtime Database `positions/{uid}`, merged onto the
+ * Firestore profile client-side — see api/peopleApi.ts.
+ */
+export interface Person extends PersonProfile {
   kind: ActivityKind;
   lat: number;
   lng: number;
@@ -46,6 +66,8 @@ export interface Photo {
   lat: number;
   lng: number;
   accuracy: number;
+  /** Short shareable pin (e.g. "7JJVXR9R+2X") — see utils/geo.ts plusCodeFor. */
+  plusCode: string;
   takenAt: number;
   personId: string;
   task: string;

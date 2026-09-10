@@ -1,10 +1,11 @@
 import { AppEvent, Person, Photo, Site } from '@/types/domain';
+import { plusCodeFor } from '@/utils/geo';
 
 /**
- * Static seed data for the mock api/ layer (src/api/*). This is the only
- * file that should need to change to reskin the demo dataset; nothing
- * downstream (stores, controllers, screens) imports these constants
- * directly — they always go through api/.
+ * Demo dataset — no longer read by the app itself (src/api/* now talks to
+ * Firebase directly). Kept as the source data for scripts/seedFirebase.js,
+ * which provisions matching Firebase Auth accounts + Firestore/Storage
+ * records so a fresh project starts with a working, realistic roster.
  */
 
 export const SEED_SITE: Site = {
@@ -19,6 +20,7 @@ export const SEED_PEOPLE: Person[] = [
     id: 'rk',
     name: 'Ramesh Kumar',
     role: 'Driver · Crew A',
+    appRole: 'worker',
     color: '#1a73e8',
     kind: 'vehicle',
     lat: 28.6142,
@@ -32,6 +34,7 @@ export const SEED_PEOPLE: Person[] = [
     id: 'sy',
     name: 'Suryakant Yadav',
     role: 'Mason · Crew A',
+    appRole: 'worker',
     color: '#188038',
     kind: 'walk',
     lat: 28.6138,
@@ -45,6 +48,7 @@ export const SEED_PEOPLE: Person[] = [
     id: 'pd',
     name: 'Pooja Devi',
     role: 'Helper · Crew A',
+    appRole: 'worker',
     color: '#a142f4',
     kind: 'still',
     lat: 28.6136,
@@ -58,6 +62,7 @@ export const SEED_PEOPLE: Person[] = [
     id: 'at',
     name: 'Arjun Thakur',
     role: 'Bar bender · Crew B',
+    appRole: 'worker',
     color: '#9aa0a6',
     kind: 'stale',
     lat: 28.614,
@@ -71,6 +76,7 @@ export const SEED_PEOPLE: Person[] = [
     id: 'vs',
     name: 'Vikas Singh',
     role: 'Carpenter · Crew B',
+    appRole: 'worker',
     color: '#f29900',
     kind: 'walk',
     lat: 28.6134,
@@ -89,6 +95,7 @@ export const SEED_PHOTOS: Photo[] = [
     lat: 28.6139,
     lng: 77.209,
     accuracy: 8,
+    plusCode: plusCodeFor({ lat: 28.6139, lng: 77.209 }),
     takenAt: Date.now() - 20 * 60e3,
     personId: 'sy',
     task: 'Column grid L4',
@@ -100,6 +107,7 @@ export const SEED_PHOTOS: Photo[] = [
     lat: 28.61385,
     lng: 77.20895,
     accuracy: 6,
+    plusCode: plusCodeFor({ lat: 28.61385, lng: 77.20895 }),
     takenAt: Date.now() - 55 * 60e3,
     personId: 'vs',
     task: 'Shuttering · Block C',
@@ -111,6 +119,7 @@ export const SEED_PHOTOS: Photo[] = [
     lat: 28.61375,
     lng: 77.20905,
     accuracy: 9,
+    plusCode: plusCodeFor({ lat: 28.61375, lng: 77.20905 }),
     takenAt: Date.now() - 3 * 3600e3,
     personId: 'at',
     task: 'Rebar tie-in · Bay 2',
@@ -122,6 +131,7 @@ export const SEED_PHOTOS: Photo[] = [
     lat: 28.6141,
     lng: 77.2094,
     accuracy: 11,
+    plusCode: plusCodeFor({ lat: 28.6141, lng: 77.2094 }),
     takenAt: Date.now() - 6 * 3600e3,
     personId: 'pd',
     task: 'Material delivery',

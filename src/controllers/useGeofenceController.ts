@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { useCrewTrackingController } from './useCrewTrackingController';
 
 import { updateGeofenceRadius } from '@/api/siteApi';
-import { GEOFENCE } from '@/constants/config';
+import { GEOFENCE, HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { useSiteStore } from '@/store/useSiteStore';
 import { isWithinRadius } from '@/utils/geo';
 
@@ -22,7 +22,7 @@ export function useGeofenceController() {
   const setRadius = useCallback(
     (radiusMeters: number) => {
       setGeofenceRadius(radiusMeters);
-      updateGeofenceRadius(radiusMeters).catch(() => {});
+      if (HAS_FIREBASE_CONFIG) updateGeofenceRadius(radiusMeters).catch(() => {});
     },
     [setGeofenceRadius]
   );

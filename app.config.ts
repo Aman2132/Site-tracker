@@ -7,15 +7,24 @@ const MAPBOX_DOWNLOADS_TOKEN = process.env.MAPBOX_DOWNLOADS_TOKEN ?? '';
 const config: ExpoConfig = {
   name: 'Site Tracker',
   slug: 'site-tracker',
+  // Deep-link scheme expo-dev-client's launcher uses to hand a chosen dev
+  // server URL back to the app (sitetracker://expo-development-client/?url=...).
+  scheme: 'sitetracker',
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
+  icon: './assets/icon.png',
   splash: {
+    image: './assets/splash-icon.png',
     backgroundColor: '#fbf8f2',
     resizeMode: 'contain',
   },
   android: {
     package: 'com.sitetracker.app',
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#1c4ff0',
+    },
     permissions: [
       'ACCESS_FINE_LOCATION',
       'ACCESS_COARSE_LOCATION',
@@ -46,6 +55,12 @@ const config: ExpoConfig = {
       '@rnmapbox/maps',
       {
         RNMapboxMapsDownloadToken: MAPBOX_DOWNLOADS_TOKEN,
+      },
+    ],
+    [
+      'expo-notifications',
+      {
+        color: '#1c4ff0',
       },
     ],
     [

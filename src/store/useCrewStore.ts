@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 
-import { GeoFix, Person } from '@/types/domain';
+import { Person, TrackedFix } from '@/types/domain';
 
 interface CrewState {
   people: Person[];
   loaded: boolean;
   setPeople: (people: Person[]) => void;
-  updatePersonPosition: (personId: string, fix: GeoFix) => void;
+  updatePersonPosition: (personId: string, fix: TrackedFix) => void;
 }
 
 export const useCrewStore = create<CrewState>(set => ({

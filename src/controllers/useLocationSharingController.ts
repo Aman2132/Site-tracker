@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { reportPosition } from '@/api/peopleApi';
-import { CURRENT_WORKER_ID } from '@/constants/session';
+import { logEvent } from '@/api/eventsApi';
+import { reportPauseState, reportPosition } from '@/api/peopleApi';
 import {
   setLocationUpdateHandler,
   startBackgroundTracking,
   stopBackgroundTracking,
 } from '@/services/locationService';
 import { requestLocationPermissions } from '@/services/permissionsService';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useCrewStore } from '@/store/useCrewStore';
-import { useEventStore } from '@/store/useEventStore';
 import { LocationPermissionState } from '@/types/domain';
 
 /**
@@ -20,16 +20,18 @@ import { LocationPermissionState } from '@/types/domain';
 export function useLocationSharingController() {
   const [paused, setPaused] = useState(false);
   const [permission, setPermission] = useState<LocationPermissionState | null>(null);
+  const workerId = useAuthStore(state => state.profile?.id);
+  const workerName = useAuthStore(state => state.profile?.name);
   const updatePersonPosition = useCrewStore(state => state.updatePersonPosition);
-  const addEvent = useEventStore(state => state.addEvent);
 
   useEffect(() => {
+    if (!workerId) return;
     setLocationUpdateHandler(fix => {
-      updatePersonPosition(CURRENT_WORKER_ID, fix);
-      reportPosition(CURRENT_WORKER_ID, fix).catch(() => {});
+      updatePersonPosition(workerId, fix);
+      reportPosition(workerId, fix).catch(() => {});
     });
     return () => setLocationUpdateHandler(null);
-  }, [updatePersonPosition]);
+  }, [workerId, updatePersonPosition]);
 
   useEffect(() => {
     (async () => {
@@ -42,16 +44,17 @@ export function useLocationSharingController() {
   const togglePause = useCallback(() => {
     setPaused(wasPaused => {
       const nextPaused = !wasPaused;
+      if (workerId) reportPauseState(workerId, nextPaused).catch(() => {});
       if (nextPaused) {
         stopBackgroundTracking();
-        addEvent('You paused sharing', 'warn');
+        logEvent(`${workerName ?? 'A worker'} paused sharing`, 'warn').catch(() => {});
       } else {
         startBackgroundTracking();
-        addEvent('You resumed sharing', 'info');
+        logEvent(`${workerName ?? 'A worker'} resumed sharing`, 'info').catch(() => {});
       }
       return nextPaused;
     });
-  }, [addEvent]);
+  }, [workerId, workerName]);
 
   return { paused, togglePause, permission };
 }

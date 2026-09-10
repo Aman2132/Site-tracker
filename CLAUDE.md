@@ -48,51 +48,66 @@ then delete this section.
 
 ```
 src/
-  types/          Domain models (Person, Site, Photo, Event) + navigation
-                  param lists. Shared vocabulary — everything else imports
-                  from here, this imports from nothing else in src/.
-  constants/      theme.ts (design tokens), config.ts (behavioral tunables),
-                  mockData.ts (static seed dataset), session.ts (stand-in
-                  for the signed-in user until auth exists).
-  api/            The backend boundary. One file per resource (peopleApi,
-                  siteApi, photosApi, eventsApi), each exporting async
-                  functions that currently resolve from mockData.ts with a
-                  simulated delay. THIS is the only layer that should change
-                  when a real backend is wired in — controllers, stores and
-                  screens call these functions and don't care what's behind
-                  them.
-  services/       Device/OS integration with no app state: expo-location
-                  wrapper, offline EXIF writer, permission requests,
-                  AsyncStorage read/write. Pure, mockable, no React.
+  types/          Domain models (Person/PersonProfile, Site, Photo, Event) +
+                  navigation param lists. Shared vocabulary — everything else
+                  imports from here, this imports from nothing else in src/.
+  constants/      theme.ts (design tokens), config.ts (behavioral tunables +
+                  Firebase/Mapbox config from env), mockData.ts (seed data —
+                  no longer read by the app itself, only by
+                  scripts/seedFirebase.js).
+  api/            The backend boundary — real Firebase (Firestore + Realtime
+                  Database + Storage). One file per resource (peopleApi,
+                  siteApi, photosApi, eventsApi) plus firebaseClient.ts (the
+                  shared SDK instances every resource file imports). Static/
+                  rarely-changing data lives in Firestore; live crew
+                  positions live in Realtime Database, since RTDB's free
+                  tier is bandwidth-based rather than per-read — a much
+                  better fit for frequent small position writes. Controllers,
+                  stores and screens call these functions and don't care
+                  what's behind them.
+  services/       Device/OS + backend-SDK integration with no app state:
+                  expo-location wrapper, offline EXIF writer, permission
+                  requests, AsyncStorage read/write, authService.ts (Firebase
+                  Auth wrapper), pushService.ts (expo-notifications). Pure,
+                  mockable, no React.
   controllers/    React hooks that orchestrate: call a service and/or an
                   api/ function, then write the result into a store. Screens
                   call exactly one (or zero) controller hooks and render
                   what comes back — they never call services or api/
                   directly. Name them `use<Thing>Controller`.
-  store/          Zustand stores, one domain per file (useRoleStore,
+  store/          Zustand stores, one domain per file (useAuthStore,
                   useCrewStore, useSiteStore, usePhotoStore, useEventStore).
                   A store holds state and simple setters only — no fetching,
                   no side effects. Side effects belong in controllers/.
-  navigation/      Tab navigators + the role-based RootNavigator.
-  screens/        One screen per file, grouped by owner/ vs worker/.
-                  Screens compose components/ and read one controller hook;
-                  no business logic, no direct API/service calls.
+  navigation/      RootNavigator (gated on real auth state — signed out
+                  shows LoginScreen, else appRole picks the tab set) + the
+                  owner/worker tab navigators.
+  screens/        One screen per file, grouped by owner/ vs worker/ vs
+                  common/ (LoginScreen). Screens compose components/ and
+                  read one controller hook; no business logic, no direct
+                  API/service calls.
   components/     Reusable presentational pieces, grouped by common/
                   (shared across both roles) vs owner/ vs worker/. Pure
                   props-in, JSX-out — no store access unless a component is
-                  specifically a "smart" widget like DevRoleSwitchButton,
-                  and even then it should be one obvious store call, not
+                  specifically a "smart" widget like SignOutButton, and even
+                  then it should be one obvious store/service call, not
                   business logic.
   utils/          Pure functions with no side effects (formatters.ts,
                   geo.ts). If it doesn't touch React, the network, or the
                   device, it goes here, not in a component.
+scripts/          One-off Node admin scripts (Firebase seeding via
+                  firebase-admin). Has its own package.json — never imported
+                  by the RN app, never part of the bundle.
 ```
 
 ## Adding a new feature — the checklist
 
 1. Add/extend the type in `src/types/domain.ts` if new data is involved.
-2. Add the fetch/mutate function to the relevant `src/api/*.ts` file (mock
-   it against `mockData.ts` for now).
+2. Add the fetch/mutate function to the relevant `src/api/*.ts` file,
+   talking to Firestore/Realtime Database/Storage directly. If it's a new
+   Firestore collection, add a matching rule block to `firestore.rules`
+   (default-deny — nothing is readable/writable until a rule allows it) and
+   redeploy with `firebase deploy --only firestore:rules`.
 3. Add or extend a Zustand store slice in `src/store/` to hold the state.
 4. Write a controller hook in `src/controllers/` that wires api → store
    (and a service, if device hardware is involved).
@@ -122,8 +137,8 @@ in JSX.
 
 ## Current status
 
-This is a runnable, fully static/mock-data build — no real backend, no
-auth. See `README.md` "Known gaps to close before shipping" for what's
-still stubbed. The architecture above is deliberately already shaped for
-those gaps to be filled by swapping `src/api/*` implementations, without
-touching `screens/`, `components/`, or `store/`.
+Backed by a real Firebase project (Auth + Firestore + Realtime Database +
+Storage) — see "Backend setup (Firebase)" in `README.md` to point it at
+your own project, and `README.md` "Known gaps to close before shipping" for
+what's still stubbed (push delivery when the app is closed, employee
+self-management, activity classification, battery reading).

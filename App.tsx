@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { MAPBOX_PUBLIC_TOKEN } from '@/constants/config';
 import RootNavigator from '@/navigation/RootNavigator';
 
@@ -37,10 +38,12 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <StatusBar style="dark" />
-        <RootNavigator />
-      </NavigationContainer>
+      <ErrorBoundary>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <RootNavigator />
+        </NavigationContainer>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

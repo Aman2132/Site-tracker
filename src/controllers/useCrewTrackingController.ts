@@ -1,15 +1,37 @@
 import { useEffect } from 'react';
 
-import { fetchCrew } from '@/api/peopleApi';
+import { subscribeToCrew } from '@/api/peopleApi';
 import { fetchSite } from '@/api/siteApi';
+import { HAS_FIREBASE_CONFIG } from '@/constants/config';
+import { SEED_PEOPLE, SEED_SITE } from '@/constants/mockData';
 import { useCrewStore } from '@/store/useCrewStore';
 import { useSiteStore } from '@/store/useSiteStore';
 
 /**
- * Loads the crew roster and site once (owner-side screens). Safe to call
- * from multiple screens — each guards on the store's `loaded` flag, so
- * whichever tab mounts first does the fetch and the rest just read state.
+ * Live crew roster + site for the owner-side screens. Safe to call from
+ * multiple screens — the crew subscription is wired once per app run
+ * (see wireCrewSubscriptionOnce) and every screen just reads store state;
+ * the site is a plain one-shot fetch since it rarely changes.
+ *
+ * Without a real Firebase project (see HAS_FIREBASE_CONFIG), Firestore/RTDB
+ * reads never resolve, so `loaded` would stay false forever and every
+ * owner screen would hang on its loading spinner — this falls back to the
+ * static demo dataset instead, same spirit as useAuthController's bypass.
  */
+let crewSubscriptionWired = false;
+
+function wireCrewSubscriptionOnce(
+  setPeople: (people: ReturnType<typeof useCrewStore.getState>['people']) => void
+) {
+  if (crewSubscriptionWired) return;
+  crewSubscriptionWired = true;
+  if (!HAS_FIREBASE_CONFIG) {
+    setPeople(SEED_PEOPLE);
+    return;
+  }
+  subscribeToCrew(setPeople);
+}
+
 export function useCrewTrackingController() {
   const people = useCrewStore(state => state.people);
   const crewLoaded = useCrewStore(state => state.loaded);
@@ -20,11 +42,16 @@ export function useCrewTrackingController() {
   const setSite = useSiteStore(state => state.setSite);
 
   useEffect(() => {
-    if (!crewLoaded) fetchCrew().then(setPeople);
-  }, [crewLoaded, setPeople]);
+    wireCrewSubscriptionOnce(setPeople);
+  }, [setPeople]);
 
   useEffect(() => {
-    if (!siteLoaded) fetchSite().then(setSite);
+    if (siteLoaded) return;
+    if (!HAS_FIREBASE_CONFIG) {
+      setSite(SEED_SITE);
+      return;
+    }
+    fetchSite().then(setSite);
   }, [siteLoaded, setSite]);
 
   return { people, site, loaded: crewLoaded && siteLoaded };

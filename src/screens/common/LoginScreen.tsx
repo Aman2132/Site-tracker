@@ -1,0 +1,150 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { colors, fontFamily, glow, gradients, radius, shadow, spacing, typography } from '@/constants/theme';
+import { useAuthController } from '@/controllers/useAuthController';
+
+export default function LoginScreen() {
+  const { signIn, signingIn, signInError } = useAuthController();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const insets = useSafeAreaInsets();
+
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !signingIn;
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={[styles.flex, { paddingTop: insets.top + spacing.xxxl, paddingBottom: insets.bottom }]}>
+        <View style={styles.head}>
+          <LinearGradient colors={gradients.primaryRadiant} style={[styles.logo, glow(colors.primary, 0.4)]}>
+            <Ionicons name="location" size={30} color={colors.white} />
+          </LinearGradient>
+          <Text style={styles.title}>Site Tracker</Text>
+          <Text style={styles.subtitle}>Sign in with the account your site owner set up for you.</Text>
+        </View>
+
+        <View style={styles.form}>
+          <Text style={styles.label}>EMAIL</Text>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoComplete="email"
+            keyboardType="email-address"
+            placeholder="you@site.com"
+            placeholderTextColor={colors.textFaint}
+          />
+
+          <Text style={styles.label}>PASSWORD</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="password"
+            placeholder="••••••••"
+            placeholderTextColor={colors.textFaint}
+          />
+
+          {signInError && (
+            <View style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={14} color={colors.dangerText} />
+              <Text style={styles.errorText}>{signInError}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            disabled={!canSubmit}
+            onPress={() => signIn(email, password)}
+            activeOpacity={0.85}
+            style={styles.submitWrap}
+          >
+            <LinearGradient
+              colors={canSubmit ? gradients.primaryRadiant : ['#c6cede', '#b6c0d4']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.submit, canSubmit && shadow.md]}
+            >
+              {signingIn ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.submitText}>Sign in</Text>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: colors.background },
+  head: { alignItems: 'center', paddingHorizontal: spacing.xxl, marginBottom: spacing.xxxl },
+  logo: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  title: { ...typography.title, color: colors.text },
+  subtitle: {
+    fontFamily: fontFamily.regular,
+    fontSize: 13,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    lineHeight: 19,
+  },
+  form: { paddingHorizontal: spacing.xxl },
+  label: {
+    ...typography.label,
+    color: colors.textFaint,
+    marginBottom: spacing.sm - 2,
+    marginTop: spacing.lg,
+  },
+  input: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontFamily: fontFamily.medium,
+    fontSize: 15,
+    color: colors.text,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    backgroundColor: colors.dangerBg,
+    borderRadius: radius.sm + 2,
+    padding: spacing.md - 2,
+    marginTop: spacing.lg,
+  },
+  errorText: { fontFamily: fontFamily.medium, color: colors.dangerText, fontSize: 12, flex: 1 },
+  submitWrap: { marginTop: spacing.xl },
+  submit: {
+    borderRadius: radius.xl,
+    paddingVertical: spacing.md + 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitText: { fontFamily: fontFamily.extrabold, color: colors.white, fontSize: 15 },
+});

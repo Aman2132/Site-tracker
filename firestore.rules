@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// Deploy with: firebase deploy --only firestore:rules
+// (requires the Firebase CLI logged into your project — see README).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.appRole == 'owner';
+    }
+
+    // Roster: read by anyone signed in (the crew list + names are shared
+    // context). Writes go through the admin SDK only (scripts/seedFirebase.js)
+    // — there's no in-app "edit employee" flow yet.
+    match /people/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Single site config. Only the owner can move the geofence.
+    match /sites/{siteId} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    // Photos: shared visibility (any signed-in crew member can see recent
+    // site photos for context). A worker can only create photos attributed
+    // to themselves, and nothing is ever edited/deleted from the client —
+    // it's meant to be an audit trail.
+    match /photos/{photoId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.personId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Activity feed: shared, append-only.
+    match /events/{eventId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if false;
+    }
+
+    // Expo push tokens, one doc per user. Separate from /people (which is
+    // admin-only-write) so each signed-in device can register its own token.
+    // Only the owner can read them (that's who a future Cloud Function would
+    // notify).
+    match /pushTokens/{uid} {
+      allow read: if isOwner();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+  }
+}

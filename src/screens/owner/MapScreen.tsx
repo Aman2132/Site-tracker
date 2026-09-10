@@ -5,8 +5,8 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import DevRoleSwitchButton from '@/components/common/DevRoleSwitchButton';
 import LoadingView from '@/components/common/LoadingView';
+import SignOutButton from '@/components/common/SignOutButton';
 import PersonDetailSheet from '@/components/owner/PersonDetailSheet';
 import PersonMapMarker from '@/components/owner/PersonMapMarker';
 import StaticSiteMap from '@/components/owner/StaticSiteMap';
@@ -64,11 +64,7 @@ export default function MapScreen() {
         </View>
       </View>
 
-      <DevRoleSwitchButton
-        targetRole="worker"
-        label="View as worker"
-        style={[styles.roleSwitch, { bottom: spacing.xl }]}
-      />
+      <SignOutButton style={[styles.signOutButton, { bottom: spacing.xl }]} />
 
       {selectedPerson && (
         <PersonDetailSheet person={selectedPerson} onClose={() => setSelectedPerson(null)} />
@@ -100,5 +96,5 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   headerTitle: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.text },
   headerSub: { fontFamily: fontFamily.regular, fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  roleSwitch: { position: 'absolute', right: spacing.md },
+  signOutButton: { position: 'absolute', right: spacing.md },
 });

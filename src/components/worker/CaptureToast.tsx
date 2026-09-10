@@ -4,12 +4,12 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 
-export default function CaptureToast({ message }: { message: string | null }) {
+export default function CaptureToast({ message, warn = false }: { message: string | null; warn?: boolean }) {
   if (!message) return null;
   return (
     <View style={styles.toast}>
-      <View style={styles.iconWrap}>
-        <Ionicons name="checkmark" size={13} color={colors.white} />
+      <View style={[styles.iconWrap, warn && styles.iconWrapWarn]}>
+        <Ionicons name={warn ? 'warning' : 'checkmark'} size={13} color={colors.white} />
       </View>
       <Text style={styles.text}>{message}</Text>
     </View>
@@ -39,5 +39,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconWrapWarn: { backgroundColor: colors.warning },
   text: { fontFamily: fontFamily.medium, flex: 1, color: colors.white, fontSize: 12.5 },
 });

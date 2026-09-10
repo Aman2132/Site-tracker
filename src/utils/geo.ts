@@ -1,6 +1,18 @@
+import { OpenLocationCode } from 'open-location-code';
+
 import { GeoPoint } from '@/types/domain';
 
 const METERS_PER_DEGREE_LAT = 111_320;
+const olc = new OpenLocationCode();
+
+/**
+ * Short, shareable "pin" for a coordinate (e.g. "7JJVXR9R+2X") — a free,
+ * offline alternative to a long decimal lat/lng, handy for remote sites with
+ * no street address. See https://plus.codes.
+ */
+export function plusCodeFor(point: GeoPoint): string {
+  return olc.encode(point.lat, point.lng);
+}
 
 /**
  * Equirectangular approximation — accurate enough at site scale (tens to

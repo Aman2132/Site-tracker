@@ -1,8 +1,11 @@
 import { useCallback, useEffect } from 'react';
 
+import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
+import { HAS_FIREBASE_CONFIG } from '@/constants/config';
+import { SEED_PHOTOS } from '@/constants/mockData';
 import { loadQueuedPhotos, saveQueuedPhotos } from '@/services/photoQueueStorage';
-import { useEventStore } from '@/store/useEventStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import { selectPendingPhotos, usePhotoStore } from '@/store/usePhotoStore';
 
 let persistenceWired = false;
@@ -27,7 +30,7 @@ export function usePhotoQueueController() {
   const setPhotos = usePhotoStore(state => state.setPhotos);
   const markAllSynced = usePhotoStore(state => state.markAllSynced);
   const pendingPhotos = usePhotoStore(selectPendingPhotos);
-  const addEvent = useEventStore(state => state.addEvent);
+  const workerName = useAuthStore(state => state.profile?.name);
 
   useEffect(() => {
     wirePersistenceOnce();
@@ -36,6 +39,8 @@ export function usePhotoQueueController() {
       const queuedOnDisk = await loadQueuedPhotos();
       if (queuedOnDisk && queuedOnDisk.length > 0) {
         setPhotos(queuedOnDisk);
+      } else if (!HAS_FIREBASE_CONFIG) {
+        setPhotos(SEED_PHOTOS);
       } else {
         setPhotos(await fetchPhotos());
       }
@@ -44,13 +49,17 @@ export function usePhotoQueueController() {
 
   const syncNow = useCallback(async () => {
     if (pendingPhotos.length === 0) return;
-    await uploadPhotos(pendingPhotos);
+    // Without a real Firebase project there's nowhere to upload to — just
+    // flip the local queue to synced, same as the rest of the static mode.
+    if (HAS_FIREBASE_CONFIG) await uploadPhotos(pendingPhotos);
     markAllSynced();
-    addEvent(
-      `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from Suryakant`,
-      'info'
-    );
-  }, [pendingPhotos, markAllSynced, addEvent]);
+    if (HAS_FIREBASE_CONFIG) {
+      logEvent(
+        `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`,
+        'info'
+      ).catch(() => {});
+    }
+  }, [pendingPhotos, markAllSynced, workerName]);
 
   return { photos, pendingCount: pendingPhotos.length, syncNow };
 }

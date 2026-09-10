@@ -2,11 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
+import { GEOTAG_ACCURACY } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 import { Photo } from '@/types/domain';
 import { formatAccuracy } from '@/utils/formatters';
 
 export default function PhotoQueueRow({ photo }: { photo: Photo }) {
+  const isLowAccuracy = photo.accuracy > GEOTAG_ACCURACY.goodMeters;
+
   return (
     <View style={styles.row}>
       <Image source={{ uri: photo.uri }} style={styles.thumb} />
@@ -15,9 +18,16 @@ export default function PhotoQueueRow({ photo }: { photo: Photo }) {
         <Text style={styles.meta}>
           {photo.lat.toFixed(6)} N {photo.lng.toFixed(6)} E {formatAccuracy(photo.accuracy)}
         </Text>
+        <Text style={styles.meta}>{photo.plusCode}</Text>
         <Text style={styles.meta}>
           {new Date(photo.takenAt).toLocaleTimeString()} · {photo.synced ? 'uploaded' : 'saved offline'}
         </Text>
+        {isLowAccuracy && (
+          <View style={styles.lowAccuracyBadge}>
+            <Ionicons name="warning" size={10} color={colors.warningText} />
+            <Text style={styles.lowAccuracyText}>Low accuracy — retake?</Text>
+          </View>
+        )}
       </View>
       <View style={[styles.state, photo.synced ? styles.stateSynced : styles.stateQueued]}>
         <Ionicons
@@ -60,4 +70,6 @@ const styles = StyleSheet.create({
   stateSynced: { backgroundColor: colors.successBg },
   stateTextQueued: { fontFamily: fontFamily.bold, color: colors.warningText, fontSize: 10 },
   stateTextSynced: { fontFamily: fontFamily.bold, color: colors.successText, fontSize: 10 },
+  lowAccuracyBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  lowAccuracyText: { fontFamily: fontFamily.bold, color: colors.warningText, fontSize: 9.5 },
 });
