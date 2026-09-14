@@ -13,7 +13,8 @@ styling conventions). Short version:
 App.tsx                  Navigation root
 src/types/                Domain models + navigation param lists
 src/constants/            theme.ts, config.ts, mockData.ts (seed script source)
-src/api/                  Backend boundary — Firebase (Firestore + Realtime DB + Storage)
+src/api/                  Backend boundary — Firebase (Firestore + Realtime DB) for
+                          everything except photo files, which are Supabase Storage
 src/services/             Device integration + auth/push: location, camera EXIF,
                           storage, permissions, authService, pushService
 src/controllers/          Hooks wiring api/services -> store (business logic)
@@ -53,13 +54,22 @@ npm run lint        # eslint
 npm test            # jest
 ```
 
-## Backend setup (Firebase)
+## Backend setup (Firebase + Supabase)
+
+Identity, roster, sites, photo metadata, events, and live positions are all Firebase.
+Photo **files** live in Supabase Storage instead of Firebase Storage — Firebase Storage
+started requiring a billing account (Blaze) for every project, even at free-tier usage,
+as of Feb 2026, while Supabase's free tier (1 GB) needs no card. Everything else stays
+on Firebase, still free with no card required.
+
+### Firebase
 
 1. Create a project at [console.firebase.google.com](https://console.firebase.google.com).
 2. Add a **Web app** to it (yes, even though this is mobile — the JS SDK config is the same
    one) and copy the config values into `.env` (see `.env.example`).
-3. Enable **Authentication -> Email/Password**, **Firestore**, **Realtime Database**, and
-   **Storage** from the left nav (each has a "get started" button — defaults are fine).
+3. Enable **Authentication -> Email/Password**, **Firestore**, and **Realtime Database**
+   from the left nav (each has a "get started" button — production/locked mode is fine,
+   the rules already in this repo cover it). Don't enable Storage — that's Supabase now.
 4. Deploy the security rules (requires `npm install -g firebase-tools` then `firebase login`
    once): `firebase deploy --only firestore:rules,database` — do this before real employees
    use the app, since the rules are what stop a stranger with your API keys from reading or
@@ -75,6 +85,24 @@ npm test            # jest
    Firebase Auth accounts, prints their generated passwords once, and writes their
    `people/{uid}` profile docs plus `sites/default`. Keep the service account key out of
    git — it's a permanent admin credential, already covered by `.gitignore`.
+
+### Supabase (photo storage only)
+
+1. Create a project at [supabase.com](https://supabase.com) — no card required.
+2. **Storage** (left nav) -> **New bucket** -> name it `Photos` (bucket names are
+   case-sensitive — must match `PHOTOS_BUCKET` in `src/api/photosApi.ts` exactly) -> mark
+   it **Public** (so `getPublicUrl()` resolves to a working image URL — Firestore's own
+   `photos` collection rules still gate who can see photo *metadata*, this only affects
+   the raw image file).
+3. **Project Settings -> Data API** -> copy the **Project URL**, and **Project Settings ->
+   API Keys** -> copy the **Publishable key** (Supabase's newer name for what used to be
+   called the "anon key" — not the Secret key, which has privileged access) -> both into
+   `.env` (see `.env.example`).
+4. The publishable key only allows uploads into the public `Photos` bucket — there's no
+   per-user write restriction the way Firestore/Realtime Database have (Supabase's
+   row-level security keys off *its own* auth, and this app authenticates through
+   Firebase, not Supabase). Fine for a demo/small-team rollout; tighten before scaling
+   up if that matters for your use case.
 
 ## Building a real install (EAS)
 
@@ -104,3 +132,12 @@ eas build --profile production --platform android # Play Store app bundle
 - **Battery level isn't read from the device.** `Person.battery` is only ever updated to
   its default (100%) since nothing calls a battery API yet — wiring up `expo-battery` would
   close this.
+- **The Supabase `Photos` bucket has no per-user write restriction.** Firestore and
+  Realtime Database enforce "a worker can only write their own data" via security rules
+  keyed off Firebase Auth's `request.auth.uid`; Supabase's row-level security keys off
+  *its own* auth instead, which this app doesn't use (see "Backend setup" above). Anyone
+  with the publishable key (shipped in the client bundle, same as every other config value here)
+  can currently write into any `photos/{personId}/` path, not just their own. Fine for a
+  demo or small trusted crew; closing it for real means either a Supabase Edge Function
+  that verifies the caller's Firebase ID token before allowing an upload, or moving photo
+  storage back to Firebase Storage once a Blaze billing account is acceptable.

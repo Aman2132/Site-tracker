@@ -4,8 +4,8 @@ import { plusCodeFor } from '@/utils/geo';
 /**
  * Demo dataset — no longer read by the app itself (src/api/* now talks to
  * Firebase directly). Kept as the source data for scripts/seedFirebase.js,
- * which provisions matching Firebase Auth accounts + Firestore/Storage
- * records so a fresh project starts with a working, realistic roster.
+ * which provisions matching Firebase Auth accounts + Firestore records so a
+ * fresh project starts with a working, realistic roster.
  */
 
 export const SEED_SITE: Site = {

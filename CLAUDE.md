@@ -52,13 +52,17 @@ src/
                   navigation param lists. Shared vocabulary — everything else
                   imports from here, this imports from nothing else in src/.
   constants/      theme.ts (design tokens), config.ts (behavioral tunables +
-                  Firebase/Mapbox config from env), mockData.ts (seed data —
-                  no longer read by the app itself, only by
+                  Firebase/Supabase/Mapbox config from env), mockData.ts
+                  (seed data — no longer read by the app itself, only by
                   scripts/seedFirebase.js).
   api/            The backend boundary — real Firebase (Firestore + Realtime
-                  Database + Storage). One file per resource (peopleApi,
-                  siteApi, photosApi, eventsApi) plus firebaseClient.ts (the
-                  shared SDK instances every resource file imports). Static/
+                  Database) for everything except photo files, which go to
+                  Supabase Storage (Firebase Storage started requiring a
+                  Blaze billing account for every project, even free-tier
+                  usage, as of Feb 2026 — see README "Backend setup"). One
+                  file per resource (peopleApi, siteApi, photosApi,
+                  eventsApi) plus firebaseClient.ts and supabaseClient.ts
+                  (the shared SDK instances resource files import). Static/
                   rarely-changing data lives in Firestore; live crew
                   positions live in Realtime Database, since RTDB's free
                   tier is bandwidth-based rather than per-read — a much
@@ -104,10 +108,10 @@ scripts/          One-off Node admin scripts (Firebase seeding via
 
 1. Add/extend the type in `src/types/domain.ts` if new data is involved.
 2. Add the fetch/mutate function to the relevant `src/api/*.ts` file,
-   talking to Firestore/Realtime Database/Storage directly. If it's a new
-   Firestore collection, add a matching rule block to `firestore.rules`
-   (default-deny — nothing is readable/writable until a rule allows it) and
-   redeploy with `firebase deploy --only firestore:rules`.
+   talking to Firestore/Realtime Database (or Supabase Storage, for photo
+   files) directly. If it's a new Firestore collection, add a matching rule
+   block to `firestore.rules` (default-deny — nothing is readable/writable
+   until a rule allows it) and redeploy with `firebase deploy --only firestore:rules`.
 3. Add or extend a Zustand store slice in `src/store/` to hold the state.
 4. Write a controller hook in `src/controllers/` that wires api → store
    (and a service, if device hardware is involved).
@@ -137,8 +141,11 @@ in JSX.
 
 ## Current status
 
-Backed by a real Firebase project (Auth + Firestore + Realtime Database +
-Storage) — see "Backend setup (Firebase)" in `README.md` to point it at
-your own project, and `README.md` "Known gaps to close before shipping" for
-what's still stubbed (push delivery when the app is closed, employee
-self-management, activity classification, battery reading).
+Backed by a real Firebase project (Auth + Firestore + Realtime Database) plus
+a real Supabase project (Storage, for photo files only — see the Feb 2026
+Firebase Storage billing note above) — see "Backend setup (Firebase +
+Supabase)" in `README.md` to point it at your own projects, and `README.md`
+"Known gaps to close before shipping" for what's still stubbed (push
+delivery when the app is closed, employee self-management, activity
+classification, battery reading, per-user write restriction on the Supabase
+bucket).

@@ -38,7 +38,7 @@ export const GEOTAG_ACCURACY = {
 /** Simulated network latency for the mock api/ layer, so loading states are real. */
 export const MOCK_NETWORK_DELAY_MS = 400;
 
-export const DEFAULT_COORDS: { lat: number; lng: number } = { lat: 28.6139, lng: 77.209 };
+export const DEFAULT_COORDS: { lat: number; lng: number } = { lat: 27.7172, lng: 85.324 };
 
 /** Public Mapbox token, inlined at build time — see .env.example. */
 export const MAPBOX_PUBLIC_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -53,7 +53,6 @@ export const FIREBASE_CONFIG = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? 'placeholder-api-key',
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? '',
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? '',
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '',
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '',
   // getDatabase() parses this synchronously at app startup and crashes on an
@@ -67,3 +66,17 @@ export const FIREBASE_CONFIG = {
 // "no real config." projectId has no such placeholder — it stays '' until a
 // real value is set — making it the reliable check here.
 export const HAS_FIREBASE_CONFIG = FIREBASE_CONFIG.projectId.length > 0;
+
+/**
+ * Supabase config — used only for Storage (photo files), see
+ * api/supabaseClient.ts. Firebase Storage started requiring a billing
+ * account (Blaze) for every project, including free-tier usage, as of
+ * Feb 2026; everything else (Auth, Firestore, Realtime Database) stays on
+ * Firebase, which is still free with no card required.
+ */
+export const SUPABASE_CONFIG = {
+  url: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
+  publishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
+} as const;
+
+export const HAS_SUPABASE_CONFIG = SUPABASE_CONFIG.url.length > 0;

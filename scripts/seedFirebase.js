@@ -24,7 +24,7 @@ admin.initializeApp({ credential: admin.credential.cert(require(keyPath)) });
 const auth = admin.auth();
 const db = admin.firestore();
 
-const SITE = { name: 'Sector 62 · Tower B', lat: 28.6139, lng: 77.209, radius: 150 };
+const SITE = { name: 'Kathmandu Demo Site', lat: 27.7172, lng: 85.324, radius: 150 };
 
 const PEOPLE = [
   { email: 'owner@sitetracker.local', name: 'Site Owner', role: 'Owner', appRole: 'owner', color: '#1c4ff0' },
@@ -46,7 +46,19 @@ async function main() {
   const credentials = [];
   for (const person of PEOPLE) {
     const password = randomPassword();
-    const userRecord = await auth.createUser({ email: person.email, password, displayName: person.name });
+    let userRecord;
+    try {
+      userRecord = await auth.createUser({ email: person.email, password, displayName: person.name });
+    } catch (error) {
+      // Re-running this script (e.g. after changing SITE above) shouldn't
+      // crash on accounts that already exist from a previous run — just
+      // skip them, their password doesn't change.
+      if (error.code === 'auth/email-already-exists') {
+        console.log(`Skipped ${person.appRole}: ${person.name} <${person.email}> (already exists)`);
+        continue;
+      }
+      throw error;
+    }
     await db.collection('people').doc(userRecord.uid).set({
       name: person.name,
       role: person.role,
@@ -57,8 +69,12 @@ async function main() {
     console.log(`Created ${person.appRole}: ${person.name} <${person.email}>`);
   }
 
-  console.log('\n=== Save these credentials somewhere safe — shown only once ===');
-  console.table(credentials);
+  if (credentials.length > 0) {
+    console.log('\n=== Save these credentials somewhere safe — shown only once ===');
+    console.table(credentials);
+  } else {
+    console.log('\nNo new accounts created — everyone already existed.');
+  }
 }
 
 main()
