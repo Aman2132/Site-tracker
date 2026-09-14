@@ -26,6 +26,16 @@ confirm — via Windows Security → Device security → Core isolation → Memo
 integrity, or setting that same registry value back to `1` and rebooting —
 then delete this section.
 
+## Standing instruction — never push on the user's behalf
+
+Only the user themselves runs `git push` (or anything else that publishes
+commits to a remote) in this repo. Claude may stage and commit locally
+without asking, but must never push proactively. If the user explicitly
+says to push, don't push immediately — ask them to confirm three separate
+times before actually running it. This was set as a standing rule on
+2026-09-14 after Claude pushed a commit unprompted; do not remove or soften
+this section without the user explicitly saying so.
+
 ## Non-negotiables
 
 1. **TypeScript everywhere.** No new `.js`/`.jsx` files under `src/` or at
