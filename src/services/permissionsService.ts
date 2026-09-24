@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import * as MediaLibrary from 'expo-media-library';
 
 import { LocationPermissionState } from '@/types/domain';
 
@@ -12,4 +13,13 @@ export async function requestLocationPermissions(): Promise<LocationPermissionSt
 
   const background = await Location.requestBackgroundPermissionsAsync();
   return { granted: true, background: background.status === 'granted' };
+}
+
+/**
+ * Write-only gallery access — enough to add a capture to the device's
+ * photos, without asking to read everything already on it.
+ */
+export async function requestGallerySavePermission(): Promise<boolean> {
+  const result = await MediaLibrary.requestPermissionsAsync(true).catch(() => null);
+  return result?.granted ?? false;
 }

@@ -58,11 +58,6 @@ export async function stopBackgroundTracking(): Promise<void> {
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
 }
 
-export async function getCurrentFix(): Promise<GeoFix> {
-  const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-  return { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? 9999 };
-}
-
 /**
  * Continuous high-accuracy GPS stream for the Camera screen's live accuracy
  * readout — deliberately separate from the battery-conscious background

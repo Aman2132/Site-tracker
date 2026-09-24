@@ -42,8 +42,3 @@ export async function registerForPushNotifications(): Promise<string | null> {
   const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
   return token.data;
 }
-
-/** Immediate local notification — used for events that happen while the app is foregrounded. */
-export async function notifyLocally(title: string, body: string): Promise<void> {
-  await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null });
-}

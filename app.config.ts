@@ -31,6 +31,12 @@ const config: ExpoConfig = {
       'ACCESS_BACKGROUND_LOCATION',
       'CAMERA',
       'FOREGROUND_SERVICE',
+      // Writing a capture into the device gallery. WRITE_EXTERNAL_STORAGE is
+      // only consulted on API <= 28; scoped storage covers it above that.
+      'WRITE_EXTERNAL_STORAGE',
+      // Without this, Android 10+ redacts GPS EXIF out of MediaStore reads,
+      // so the gallery copy would show no location.
+      'ACCESS_MEDIA_LOCATION',
     ],
   },
   plugins: [
@@ -61,6 +67,14 @@ const config: ExpoConfig = {
       'expo-notifications',
       {
         color: '#1c4ff0',
+      },
+    ],
+    [
+      'expo-media-library',
+      {
+        savePhotosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
+        photosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
+        isAccessMediaLocationEnabled: true,
       },
     ],
     [

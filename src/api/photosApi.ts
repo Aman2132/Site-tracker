@@ -1,4 +1,13 @@
-import { addDoc, collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  QueryConstraint,
+  where,
+} from 'firebase/firestore';
 
 import { firestore } from './firebaseClient';
 import { supabase } from './supabaseClient';
@@ -14,15 +23,20 @@ const RECENT_PHOTOS_LIMIT = 60;
 // case-sensitive; this must match exactly what's in the Supabase dashboard.
 const PHOTOS_BUCKET = 'Photos';
 
-/** One-shot fetch used to seed the Photos screens (live updates aren't needed here — new
- *  photos a worker takes show up immediately from local state; syncing them is what matters). */
-export async function fetchPhotos(): Promise<Photo[]> {
-  const photosQuery = query(
-    collection(firestore, PHOTOS_COLLECTION),
-    orderBy('takenAt', 'desc'),
-    limit(RECENT_PHOTOS_LIMIT)
-  );
-  const snapshot = await getDocs(photosQuery);
+/**
+ * One-shot fetch used to seed the Photos screens (live updates aren't needed here — new
+ * photos a worker takes show up immediately from local state; syncing them is what matters).
+ *
+ * `personId` scopes the result to one worker. It is not optional in
+ * practice: firestore.rules only lets the owner read the collection
+ * unscoped, so a worker calling this without a personId gets a
+ * permission-denied rather than everyone's photos.
+ */
+export async function fetchPhotos(personId?: string): Promise<Photo[]> {
+  const constraints: QueryConstraint[] = [orderBy('takenAt', 'desc'), limit(RECENT_PHOTOS_LIMIT)];
+  if (personId) constraints.unshift(where('personId', '==', personId));
+
+  const snapshot = await getDocs(query(collection(firestore, PHOTOS_COLLECTION), ...constraints));
   return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<Photo, 'id'>) }));
 }
 

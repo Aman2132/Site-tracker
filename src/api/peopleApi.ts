@@ -48,6 +48,30 @@ export async function fetchPersonProfile(uid: string): Promise<PersonProfile | n
   return { id: snap.id, ...(snap.data() as Omit<PersonProfile, 'id'>) };
 }
 
+/** A small rotating palette for self-registered workers, since they don't pick a color at signup. */
+const SELF_SIGNUP_COLORS = ['#1a73e8', '#188038', '#a142f4', '#f29900', '#d93025', '#12b5cb'];
+
+function colorForNewWorker(uid: string): string {
+  let hash = 0;
+  for (let i = 0; i < uid.length; i++) hash = (hash * 31 + uid.charCodeAt(i)) >>> 0;
+  return SELF_SIGNUP_COLORS[hash % SELF_SIGNUP_COLORS.length];
+}
+
+/**
+ * Creates the Firestore profile for a self-registered worker, right after
+ * their Firebase Auth account is made. appRole is always 'worker' here —
+ * firestore.rules rejects a create with any other appRole, so owner
+ * accounts stay seed-script-only regardless of what a client sends.
+ */
+export async function createPersonProfile(uid: string, name: string): Promise<void> {
+  await setDoc(doc(firestore, 'people', uid), {
+    name,
+    role: 'Worker',
+    appRole: 'worker',
+    color: colorForNewWorker(uid),
+  });
+}
+
 /**
  * Live crew feed for the owner's Map/Crew screens. Subscribes to the
  * roster once and to positions continuously, re-merging on every change.

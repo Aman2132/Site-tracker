@@ -26,7 +26,19 @@ const db = admin.firestore();
 
 const SITE = { name: 'Kathmandu Demo Site', lat: 27.7172, lng: 85.324, radius: 150 };
 
+// A `password` here pins a fixed credential instead of generating a random
+// one, and re-running the script resets it. Only the shared admin login uses
+// this — it's a known-password account committed to the repo, so treat it as
+// a development convenience and change it before real employees use the app.
 const PEOPLE = [
+  {
+    email: 'admin@admin.com',
+    password: '*A123456',
+    name: 'Administrator',
+    role: 'Administrator',
+    appRole: 'owner',
+    color: '#1c4ff0',
+  },
   { email: 'owner@sitetracker.local', name: 'Site Owner', role: 'Owner', appRole: 'owner', color: '#1c4ff0' },
   { email: 'ramesh.kumar@sitetracker.local', name: 'Ramesh Kumar', role: 'Driver · Crew A', appRole: 'worker', color: '#1a73e8' },
   { email: 'suryakant.yadav@sitetracker.local', name: 'Suryakant Yadav', role: 'Mason · Crew A', appRole: 'worker', color: '#188038' },
@@ -45,19 +57,32 @@ async function main() {
 
   const credentials = [];
   for (const person of PEOPLE) {
-    const password = randomPassword();
+    const password = person.password ?? randomPassword();
     let userRecord;
     try {
       userRecord = await auth.createUser({ email: person.email, password, displayName: person.name });
+      console.log(`Created ${person.appRole}: ${person.name} <${person.email}>`);
     } catch (error) {
-      // Re-running this script (e.g. after changing SITE above) shouldn't
-      // crash on accounts that already exist from a previous run — just
-      // skip them, their password doesn't change.
-      if (error.code === 'auth/email-already-exists') {
+      if (error.code !== 'auth/email-already-exists') throw error;
+
+      userRecord = await auth.getUserByEmail(person.email);
+      if (person.password) {
+        // Fixed-password accounts (the admin login) are reset on every run so
+        // the credential in this file is always the one that actually works.
+        await auth.updateUser(userRecord.uid, { password: person.password, displayName: person.name });
+        console.log(`Reset ${person.appRole}: ${person.name} <${person.email}> (password re-applied)`);
+      } else {
+        // Generated-password accounts keep whatever they were given on first
+        // run — we can't show it again, so don't claim to.
         console.log(`Skipped ${person.appRole}: ${person.name} <${person.email}> (already exists)`);
+        await db.collection('people').doc(userRecord.uid).set({
+          name: person.name,
+          role: person.role,
+          appRole: person.appRole,
+          color: person.color,
+        });
         continue;
       }
-      throw error;
     }
     await db.collection('people').doc(userRecord.uid).set({
       name: person.name,
@@ -66,7 +91,6 @@ async function main() {
       color: person.color,
     });
     credentials.push({ name: person.name, email: person.email, password });
-    console.log(`Created ${person.appRole}: ${person.name} <${person.email}>`);
   }
 
   if (credentials.length > 0) {

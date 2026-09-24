@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import EmptyState from '@/components/common/EmptyState';
@@ -13,7 +13,7 @@ import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { usePhotoStore } from '@/store/usePhotoStore';
 
 export default function QueueScreen() {
-  const { photos, pendingCount, syncNow } = usePhotoQueueController();
+  const { photos, pendingCount, syncNow, syncing, syncError } = usePhotoQueueController();
   const loaded = usePhotoStore(state => state.loaded);
   const insets = useSafeAreaInsets();
 
@@ -24,15 +24,19 @@ export default function QueueScreen() {
       <View style={[styles.headerRow, { paddingTop: insets.top + spacing.lg }]}>
         <Text style={styles.title}>My photos</Text>
         {pendingCount ? (
-          <TouchableOpacity onPress={syncNow} activeOpacity={0.8}>
+          <TouchableOpacity onPress={syncNow} activeOpacity={0.8} disabled={syncing}>
             <LinearGradient
               colors={gradients.worker}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={[styles.syncButton, glow(colors.worker, 0.35)]}
             >
-              <Ionicons name="sync" size={13} color={colors.white} />
-              <Text style={styles.syncText}>Sync now</Text>
+              {syncing ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Ionicons name="sync" size={13} color={colors.white} />
+              )}
+              <Text style={styles.syncText}>{syncing ? 'Syncing…' : 'Sync now'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         ) : (
@@ -42,6 +46,12 @@ export default function QueueScreen() {
           </View>
         )}
       </View>
+      {syncError && (
+        <View style={styles.errorBar}>
+          <Ionicons name="alert-circle-outline" size={14} color={colors.dangerText} />
+          <Text style={styles.errorText}>{syncError}</Text>
+        </View>
+      )}
       <FlatList
         data={photos}
         keyExtractor={photo => photo.id}
@@ -72,6 +82,18 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 1,
     borderRadius: radius.pill,
   },
+  errorBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    backgroundColor: colors.dangerBg,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+  },
+  errorText: { flex: 1, fontFamily: fontFamily.medium, color: colors.dangerText, fontSize: 12 },
   syncButtonDisabled: { backgroundColor: colors.background },
   syncText: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 12.5 },
   syncTextDisabled: { fontFamily: fontFamily.bold, color: colors.textMuted, fontSize: 12.5 },

@@ -1,4 +1,4 @@
-import { distanceMeters, geoCirclePolygon, isWithinRadius, offsetMeters } from '@/utils/geo';
+import { distanceMeters, geoCirclePolygon, isWithinRadius, offsetMeters, plusCodeFor } from '@/utils/geo';
 
 describe('distanceMeters', () => {
   it('is zero for the same point', () => {
@@ -22,6 +22,40 @@ describe('isWithinRadius', () => {
 
   it('is false for a point well outside the radius', () => {
     expect(isWithinRadius({ lat: 28.63, lng: 77.209 }, center, 150)).toBe(false);
+  });
+
+  it('counts the center itself as inside any positive radius', () => {
+    expect(isWithinRadius(center, center, 1)).toBe(true);
+  });
+
+  it('separates points a metre either side of the fence line', () => {
+    // A metre is well inside GPS noise, which is the whole reason
+    // driftSafeRadiusMeters exists — the maths itself is this sharp.
+    const justInside = { lat: center.lat + 149 / 111_320, lng: center.lng };
+    const justOutside = { lat: center.lat + 151 / 111_320, lng: center.lng };
+
+    expect(isWithinRadius(justInside, center, 150)).toBe(true);
+    expect(isWithinRadius(justOutside, center, 150)).toBe(false);
+  });
+
+  it('treats a zero radius as enclosing nothing', () => {
+    expect(isWithinRadius(center, center, 0)).toBe(false);
+  });
+});
+
+describe('plusCodeFor', () => {
+  it('produces a valid plus code for a site coordinate', () => {
+    expect(plusCodeFor({ lat: 27.7172, lng: 85.324 })).toMatch(
+      /^[23456789CFGHJMPQRVWX]{8}\+[23456789CFGHJMPQRVWX]{2,}$/
+    );
+  });
+
+  it('gives different codes to points far apart', () => {
+    expect(plusCodeFor({ lat: 27.7172, lng: 85.324 })).not.toBe(plusCodeFor({ lat: 28.6139, lng: 77.209 }));
+  });
+
+  it('handles southern and western coordinates', () => {
+    expect(plusCodeFor({ lat: -33.8688, lng: -70.6693 })).toMatch(/^[23456789CFGHJMPQRVWX]{8}\+/);
   });
 });
 

@@ -1,7 +1,10 @@
 /** Presentation-only formatting helpers. No business logic lives here. */
 
 export function timeAgo(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
+  // lastFixAt is a Firebase server timestamp; Date.now() is the local device
+  // clock. A device running a few seconds behind can make ms come out
+  // slightly negative — clamp so that reads as "just now" instead of "-4s ago".
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s ago`;
 
   const totalMinutes = Math.floor(totalSeconds / 60);
@@ -13,7 +16,9 @@ export function timeAgo(ms: number): string {
 }
 
 export function formatCoord(lat: number, lng: number): string {
-  return `${lat.toFixed(6)}° N, ${lng.toFixed(6)}° E`;
+  const latRef = lat >= 0 ? 'N' : 'S';
+  const lngRef = lng >= 0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(6)}° ${latRef}, ${Math.abs(lng).toFixed(6)}° ${lngRef}`;
 }
 
 export function formatAccuracy(accuracyMeters: number): string {

@@ -16,13 +16,38 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fontFamily, glow, gradients, radius, shadow, spacing, typography } from '@/constants/theme';
 import { useAuthController } from '@/controllers/useAuthController';
 
+type Mode = 'signIn' | 'signUp';
+
 export default function LoginScreen() {
-  const { signIn, signingIn, signInError } = useAuthController();
+  const { signIn, signUp, signingIn, signInError } = useAuthController();
+  const [mode, setMode] = useState<Mode>('signIn');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const insets = useSafeAreaInsets();
 
-  const canSubmit = email.trim().length > 0 && password.length > 0 && !signingIn;
+  const isSignUp = mode === 'signUp';
+  const passwordsMatch = !isSignUp || (password.length > 0 && password === confirmPassword);
+  const canSubmit =
+    email.trim().length > 0 &&
+    password.length > 0 &&
+    (!isSignUp || name.trim().length > 0) &&
+    passwordsMatch &&
+    !signingIn;
+
+  const toggleMode = () => {
+    setMode(current => (current === 'signIn' ? 'signUp' : 'signIn'));
+    setConfirmPassword('');
+  };
+
+  const handleSubmit = () => {
+    if (isSignUp) {
+      signUp(email, password, name);
+    } else {
+      signIn(email, password);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -32,10 +57,29 @@ export default function LoginScreen() {
             <Ionicons name="location" size={30} color={colors.white} />
           </LinearGradient>
           <Text style={styles.title}>Site Tracker</Text>
-          <Text style={styles.subtitle}>Sign in with the account your site owner set up for you.</Text>
+          <Text style={styles.subtitle}>
+            {isSignUp
+              ? 'Create your worker account to start sharing your site location.'
+              : 'Sign in with the account your site owner set up for you.'}
+          </Text>
         </View>
 
         <View style={styles.form}>
+          {isSignUp && (
+            <>
+              <Text style={styles.label}>FULL NAME</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                autoComplete="name"
+                placeholder="Ramesh Kumar"
+                placeholderTextColor={colors.textFaint}
+              />
+            </>
+          )}
+
           <Text style={styles.label}>EMAIL</Text>
           <TextInput
             style={styles.input}
@@ -54,10 +98,28 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoComplete="password"
+            autoComplete={isSignUp ? 'new-password' : 'password'}
             placeholder="••••••••"
             placeholderTextColor={colors.textFaint}
           />
+
+          {isSignUp && (
+            <>
+              <Text style={styles.label}>CONFIRM PASSWORD</Text>
+              <TextInput
+                style={styles.input}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                autoComplete="new-password"
+                placeholder="••••••••"
+                placeholderTextColor={colors.textFaint}
+              />
+              {confirmPassword.length > 0 && !passwordsMatch && (
+                <Text style={styles.hintText}>Passwords don't match.</Text>
+              )}
+            </>
+          )}
 
           {signInError && (
             <View style={styles.errorBanner}>
@@ -68,7 +130,7 @@ export default function LoginScreen() {
 
           <TouchableOpacity
             disabled={!canSubmit}
-            onPress={() => signIn(email, password)}
+            onPress={handleSubmit}
             activeOpacity={0.85}
             style={styles.submitWrap}
           >
@@ -81,9 +143,16 @@ export default function LoginScreen() {
               {signingIn ? (
                 <ActivityIndicator color={colors.white} />
               ) : (
-                <Text style={styles.submitText}>Sign in</Text>
+                <Text style={styles.submitText}>{isSignUp ? 'Create account' : 'Sign in'}</Text>
               )}
             </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={toggleMode} activeOpacity={0.7} style={styles.toggleWrap}>
+            <Text style={styles.toggleText}>
+              {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+              <Text style={styles.toggleTextStrong}>{isSignUp ? 'Sign in' : 'Create one'}</Text>
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -129,6 +198,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  hintText: {
+    fontFamily: fontFamily.medium,
+    color: colors.dangerText,
+    fontSize: 12,
+    marginTop: spacing.xs + 2,
+  },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -147,4 +222,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   submitText: { fontFamily: fontFamily.extrabold, color: colors.white, fontSize: 15 },
+  toggleWrap: { marginTop: spacing.lg, alignItems: 'center' },
+  toggleText: { fontFamily: fontFamily.regular, color: colors.textMuted, fontSize: 13 },
+  toggleTextStrong: { fontFamily: fontFamily.bold, color: colors.primary },
 });

@@ -4,6 +4,8 @@ import type { Camera } from 'react-native-vision-camera';
 import { DEFAULT_COORDS, GEOTAG_ACCURACY } from '@/constants/config';
 import { writeGeotag } from '@/services/exifService';
 import { watchPreciseFix } from '@/services/locationService';
+import { saveToDeviceGallery } from '@/services/mediaLibraryService';
+import { requestGallerySavePermission } from '@/services/permissionsService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { GeoFix } from '@/types/domain';
@@ -15,7 +17,8 @@ import { plusCodeFor } from '@/utils/geo';
  * services/locationService.ts watchPreciseFix for why this is a separate,
  * screen-scoped stream rather than reusing the battery-conscious background
  * tracking task). Capture reads the watch's latest fix, burns it into EXIF
- * offline, then queues the photo locally.
+ * offline, queues the photo locally, and drops a copy into the device
+ * gallery so the geotag is visible outside the app too.
  */
 export function usePhotoCaptureController() {
   const addPhoto = usePhotoStore(state => state.addPhoto);
@@ -24,11 +27,20 @@ export function usePhotoCaptureController() {
   const [lastSavedIsPrecise, setLastSavedIsPrecise] = useState(true);
   const [liveFix, setLiveFix] = useState<GeoFix | null>(null);
   const liveFixRef = useRef<GeoFix | null>(null);
+  const canSaveToGallery = useRef(false);
 
   useEffect(() => {
     return watchPreciseFix(fix => {
       liveFixRef.current = fix;
       setLiveFix(fix);
+    });
+  }, []);
+
+  // Asked once on screen focus rather than per shutter press, so the worker
+  // isn't prompted mid-capture.
+  useEffect(() => {
+    requestGallerySavePermission().then(granted => {
+      canSaveToGallery.current = granted;
     });
   }, []);
 
@@ -45,6 +57,12 @@ export function usePhotoCaptureController() {
 
       const photoUri = `file://${photo.path}`;
       const geoTaggedUri = await writeGeotag(photoUri, { lat, lng }).catch(() => photoUri);
+
+      // Best-effort second copy. The queue below is the source of truth, so a
+      // full disk or a refused permission must not cost the worker the shot.
+      if (canSaveToGallery.current) {
+        await saveToDeviceGallery(geoTaggedUri).catch(() => {});
+      }
 
       addPhoto({
         uri: geoTaggedUri,

@@ -26,15 +26,24 @@ confirm — via Windows Security → Device security → Core isolation → Memo
 integrity, or setting that same registry value back to `1` and rebooting —
 then delete this section.
 
-## Standing instruction — never push on the user's behalf
+## Standing instruction — never commit or push on the user's behalf
 
-Only the user themselves runs `git push` (or anything else that publishes
-commits to a remote) in this repo. Claude may stage and commit locally
-without asking, but must never push proactively. If the user explicitly
-says to push, don't push immediately — ask them to confirm three separate
-times before actually running it. This was set as a standing rule on
-2026-09-14 after Claude pushed a commit unprompted; do not remove or soften
-this section without the user explicitly saying so.
+Only the user themselves runs `git commit` and `git push` in this repo.
+
+**Never commit.** Claude may stage files (`git add`) and must then stop and
+hand control back. Do not run `git commit` unless the user asks for that
+commit in the moment — a prior "you can commit" in an earlier session, or a
+long autonomous task that produced a lot of work, does not count as
+authorization. Leave the work in the working tree and say it's ready.
+
+**Never push.** Never run `git push` or anything else that publishes to a
+remote. If the user explicitly says to push, don't push immediately — ask
+them to confirm three separate times before actually running it.
+
+Set as a standing rule on 2026-09-14 after Claude pushed a commit
+unprompted, and extended to cover commits on 2026-09-20 after Claude
+committed autonomously during a `/loop` run. Do not remove or soften this
+section without the user explicitly saying so.
 
 ## Non-negotiables
 
@@ -80,10 +89,11 @@ src/
                   stores and screens call these functions and don't care
                   what's behind them.
   services/       Device/OS + backend-SDK integration with no app state:
-                  expo-location wrapper, offline EXIF writer, permission
-                  requests, AsyncStorage read/write, authService.ts (Firebase
-                  Auth wrapper), pushService.ts (expo-notifications). Pure,
-                  mockable, no React.
+                  expo-location wrapper, offline EXIF writer,
+                  mediaLibraryService.ts (saves a capture to the device
+                  gallery), permission requests, AsyncStorage read/write,
+                  authService.ts (Firebase Auth wrapper), pushService.ts
+                  (expo-notifications). Pure, mockable, no React.
   controllers/    React hooks that orchestrate: call a service and/or an
                   api/ function, then write the result into a store. Screens
                   call exactly one (or zero) controller hooks and render
