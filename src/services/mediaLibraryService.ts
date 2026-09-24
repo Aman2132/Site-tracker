@@ -1,4 +1,4 @@
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
 /**
  * Copies a finished photo into the device's own gallery (DCIM), so it shows

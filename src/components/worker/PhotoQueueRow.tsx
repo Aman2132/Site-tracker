@@ -5,6 +5,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { GEOTAG_ACCURACY } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 import { Photo } from '@/types/domain';
+import { formatDuration } from '@/utils/camera';
 import { formatAccuracy } from '@/utils/formatters';
 
 export default function PhotoQueueRow({ photo }: { photo: Photo }) {
@@ -14,7 +15,12 @@ export default function PhotoQueueRow({ photo }: { photo: Photo }) {
     <View style={styles.row}>
       <Image source={{ uri: photo.uri }} style={styles.thumb} />
       <View style={styles.textColumn}>
-        <Text style={styles.title}>{photo.task}</Text>
+        <Text style={styles.title}>
+          {photo.mediaType === 'video' ? `▶ ${photo.task}` : photo.task}
+          {photo.mediaType === 'video' && photo.durationMs != null
+            ? ` · ${formatDuration(photo.durationMs)}`
+            : ''}
+        </Text>
         <Text style={styles.meta}>
           {photo.lat.toFixed(6)} N {photo.lng.toFixed(6)} E {formatAccuracy(photo.accuracy)}
         </Text>

@@ -19,7 +19,7 @@ export default function CaptureToast({ message, warn = false }: { message: strin
 const styles = StyleSheet.create({
   toast: {
     position: 'absolute',
-    bottom: 140,
+    bottom: 260,
     left: spacing.xl,
     right: spacing.xl,
     flexDirection: 'row',

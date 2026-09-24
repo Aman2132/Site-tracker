@@ -33,6 +33,44 @@ export const GEOTAG_ACCURACY = {
   goodMeters: 20,
   /** How often the Camera screen's high-accuracy GPS watch is allowed to push an update. */
   watchIntervalMs: 500,
+  /** If the watch delivers nothing for this long, it is considered stalled and is restarted. */
+  staleAfterMs: 8000,
+  watchdogIntervalMs: 3000,
+  /** How long to wait before re-subscribing after the watch failed (e.g. permission not granted yet). */
+  retryIntervalMs: 2500,
+  /**
+   * The badge follows a smoothed accuracy (exponential average) so it does
+   * not flicker between 4 m and 19 m on every raw sample. 0-1: higher reacts faster.
+   */
+  displaySmoothing: 0.35,
+};
+
+/** Camera screen tunables. */
+export const CAMERA = {
+  /**
+   * The sharpest photo we ask the sensor for: ~12 MP, 4:3. Deliberately not
+   * 'max' — 50-200 MP sensors would produce JPEGs far too large for the
+   * JS-side EXIF rewrite (and for the upload) to handle on a phone.
+   */
+  photoTarget: { width: 4032, height: 3024 },
+  videoTarget: { width: 1920, height: 1080 },
+  videoFps: 30,
+  /** A touch counts as a tap-to-focus only if it stays within this many px and lifts within this many ms. */
+  tapSlopPx: 12,
+  tapMaxMs: 350,
+  /** How long the focus ring stays on screen. */
+  focusIndicatorMs: 1100,
+  /**
+   * Videos are uploaded by reading the whole file into JS memory, so they are
+   * kept short until uploads can stream.
+   */
+  maxVideoSeconds: 30,
+  /** Zoom is capped here even if the lens can go further — past this it is just noise. */
+  maxZoom: 10,
+  /** Times we quietly retry when Android reports the camera busy/restricted before showing a Try again button. */
+  maxAutoRetries: 3,
+  /** Wait before retry n is retryDelayMs * n, so a slow-to-release camera gets longer each time. */
+  retryDelayMs: 700,
 };
 
 /** Simulated network latency for the mock api/ layer, so loading states are real. */

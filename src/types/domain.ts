@@ -60,9 +60,23 @@ export interface Site {
   radius: number;
 }
 
+/** What a capture is. Records saved before video existed have no `mediaType` — treat those as photos. */
+export type MediaKind = 'photo' | 'video';
+
+/** Photo/video switch on the Camera screen. */
+export type CaptureMode = MediaKind;
+
+/**
+ * One captured item. Still named Photo because that is what the whole app
+ * (queue, sync, Firestore `photos` collection) already calls it; videos ride
+ * the same pipeline, distinguished by `mediaType`.
+ */
 export interface Photo {
   id: string;
   uri: string;
+  mediaType?: MediaKind;
+  /** Clip length in ms. Only set when mediaType === 'video'. */
+  durationMs?: number;
   lat: number;
   lng: number;
   accuracy: number;

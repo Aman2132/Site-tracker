@@ -40,18 +40,21 @@ export async function fetchPhotos(personId?: string): Promise<Photo[]> {
   return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<Photo, 'id'>) }));
 }
 
-/** Uploads each queued photo's image to Supabase Storage, then writes its metadata to Firestore. */
+/** Uploads each queued photo or video to Supabase Storage, then writes its metadata to Firestore. */
 export async function uploadPhotos(photos: Photo[]): Promise<void> {
   for (const photo of photos) {
     // arrayBuffer(), not blob() — RN's Blob polyfill silently truncates
-    // large images on Android, arrayBuffer() doesn't have that problem.
+    // large files on Android, arrayBuffer() doesn't have that problem. It
+    // reads the whole file into memory, which is why videos are length-capped
+    // (CAMERA.maxVideoSeconds) until uploads can stream.
     const response = await fetch(photo.uri);
     const body = await response.arrayBuffer();
-    const path = `${photo.personId}/${photo.id}.jpg`;
+    const isVideo = photo.mediaType === 'video';
+    const path = `${photo.personId}/${photo.id}.${isVideo ? 'mp4' : 'jpg'}`;
 
     const { error: uploadError } = await supabase.storage
       .from(PHOTOS_BUCKET)
-      .upload(path, body, { contentType: 'image/jpeg', upsert: true });
+      .upload(path, body, { contentType: isVideo ? 'video/mp4' : 'image/jpeg', upsert: true });
     if (uploadError) throw uploadError;
 
     const {
@@ -67,6 +70,10 @@ export async function uploadPhotos(photos: Photo[]): Promise<void> {
       takenAt: photo.takenAt,
       personId: photo.personId,
       task: photo.task,
+      mediaType: photo.mediaType ?? 'photo',
+      // Firestore rejects `undefined` field values outright, so only send a
+      // duration when there is one (photos have none).
+      ...(photo.durationMs != null ? { durationMs: photo.durationMs } : {}),
       synced: true,
     });
   }

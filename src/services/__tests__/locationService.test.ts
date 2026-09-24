@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 
+import { GEOTAG_ACCURACY } from '@/constants/config';
 import {
   classifyActivity,
   startBackgroundTracking,
@@ -93,11 +94,12 @@ describe('watchPreciseFix', () => {
     });
     const onUpdate = jest.fn();
 
-    watchPreciseFix(onUpdate);
+    const stop = watchPreciseFix(onUpdate);
     await Promise.resolve();
 
     emit({ coords: { latitude: 27.7, longitude: 85.3, accuracy: null } });
     expect(onUpdate).toHaveBeenCalledWith({ lat: 27.7, lng: 85.3, accuracy: 9999 });
+    stop();
   });
 
   it('removes the subscription even when the screen unmounts before it resolves', async () => {
@@ -128,5 +130,68 @@ describe('watchPreciseFix', () => {
 
     expect(onUpdate).not.toHaveBeenCalled();
     expect(() => stop()).not.toThrow();
+  });
+
+  describe('self-healing', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('retries until the subscription works (e.g. permission granted after first launch)', async () => {
+      (Location.watchPositionAsync as jest.Mock)
+        .mockRejectedValueOnce(new Error('denied'))
+        .mockResolvedValue({ remove: jest.fn() });
+
+      const stop = watchPreciseFix(jest.fn());
+      await jest.advanceTimersByTimeAsync(0);
+      expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+
+      await jest.advanceTimersByTimeAsync(GEOTAG_ACCURACY.retryIntervalMs);
+      expect(Location.watchPositionAsync).toHaveBeenCalledTimes(2);
+      stop();
+    });
+
+    it('stops retrying once cancelled', async () => {
+      (Location.watchPositionAsync as jest.Mock).mockRejectedValue(new Error('denied'));
+
+      const stop = watchPreciseFix(jest.fn());
+      await jest.advanceTimersByTimeAsync(0);
+      stop();
+      await jest.advanceTimersByTimeAsync(GEOTAG_ACCURACY.retryIntervalMs * 5);
+
+      expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('restarts the watch when it goes quiet', async () => {
+      const remove = jest.fn();
+      (Location.watchPositionAsync as jest.Mock).mockResolvedValue({ remove });
+
+      const stop = watchPreciseFix(jest.fn());
+      await jest.advanceTimersByTimeAsync(
+        GEOTAG_ACCURACY.staleAfterMs + GEOTAG_ACCURACY.watchdogIntervalMs * 2
+      );
+
+      expect(remove).toHaveBeenCalled();
+      expect(Location.watchPositionAsync).toHaveBeenCalledTimes(2);
+      stop();
+    });
+
+    it('leaves a healthy stream alone', async () => {
+      let emit: (loc: unknown) => void = () => {};
+      const remove = jest.fn();
+      (Location.watchPositionAsync as jest.Mock).mockImplementation(async (_o, cb) => {
+        emit = cb;
+        return { remove };
+      });
+
+      const stop = watchPreciseFix(jest.fn());
+      for (let i = 0; i < 6; i += 1) {
+        await jest.advanceTimersByTimeAsync(GEOTAG_ACCURACY.staleAfterMs / 2);
+        emit({ coords: { latitude: 1, longitude: 2, accuracy: 5 } });
+      }
+
+      expect(remove).not.toHaveBeenCalled();
+      expect(Location.watchPositionAsync).toHaveBeenCalledTimes(1);
+      stop();
+    });
   });
 });

@@ -1,23 +1,57 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import { Camera } from 'react-native-vision-camera';
 
+import CameraModeSwitch from '@/components/worker/CameraModeSwitch';
 import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
+import CameraProblemOverlay from '@/components/worker/CameraProblemOverlay';
 import CameraShutterButton from '@/components/worker/CameraShutterButton';
+import CameraZoomControl from '@/components/worker/CameraZoomControl';
 import CaptureToast from '@/components/worker/CaptureToast';
+import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
+import RecordingBadge from '@/components/worker/RecordingBadge';
+import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
-import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureController';
+import { useCameraController } from '@/controllers/useCameraController';
 
 const DEFAULT_TASK_LABEL = 'Column grid L4';
 
 export default function CameraScreen() {
-  const cameraRef = useRef<Camera>(null);
-  const device = useCameraDevice('back');
-  const { capturePhoto, lastSavedLabel, lastSavedIsPrecise, clearLastSavedLabel, liveAccuracy } =
-    usePhotoCaptureController();
+  const {
+    cameraRef,
+    device,
+    format,
+    isActive,
+    mode,
+    setMode,
+    audioEnabled,
+    photoHdr,
+    videoHdr,
+    lowLightBoost,
+    videoStabilizationMode,
+    focusPoint,
+    zoom,
+    zoomStops,
+    setZoom,
+    attempt,
+    problem,
+    retry,
+    onCameraError,
+    onCameraInitialized,
+    onShutter,
+    pinchHandlers,
+    isSaving,
+    isRecording,
+    recordingMs,
+    lastSavedLabel,
+    lastSavedIsPrecise,
+    clearLastSavedLabel,
+    liveAccuracy,
+    hasFix,
+  } = useCameraController(DEFAULT_TASK_LABEL);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -26,18 +60,35 @@ export default function CameraScreen() {
     return () => clearTimeout(timer);
   }, [lastSavedLabel, clearLastSavedLabel]);
 
-  const handleShutterPress = () => {
-    if (cameraRef.current) capturePhoto(cameraRef.current, DEFAULT_TASK_LABEL);
-  };
-
   return (
     <CameraPermissionGate>
       <View style={styles.flex}>
         {device ? (
-          <Camera ref={cameraRef} style={styles.flex} device={device} isActive photo />
+          <View style={styles.flex} {...pinchHandlers}>
+            <Camera
+              key={attempt}
+              ref={cameraRef}
+              style={styles.flex}
+              device={device}
+              format={format}
+              zoom={zoom}
+              isActive={isActive}
+              photo={mode === 'photo'}
+              video={mode === 'video'}
+              audio={audioEnabled}
+              photoHdr={photoHdr}
+              videoHdr={videoHdr}
+              lowLightBoost={lowLightBoost}
+              videoStabilizationMode={videoStabilizationMode}
+              photoQualityBalance="quality"
+              onError={onCameraError}
+              onInitialized={onCameraInitialized}
+            />
+            {focusPoint && <FocusIndicator x={focusPoint.x} y={focusPoint.y} pointKey={focusPoint.key} />}
+          </View>
         ) : (
           <View style={styles.noDeviceWrap}>
-            <Ionicons name="camera-outline" size={40} color="rgba(255,255,255,0.5)" />
+            <Ionicons name="camera-outline" size={40} color={colors.onGlassMuted} />
             <Text style={styles.noDeviceTitle}>No camera detected</Text>
             <Text style={styles.noDeviceText}>
               react-native-vision-camera can't find a usable camera. Android Studio emulators often don't
@@ -53,16 +104,37 @@ export default function CameraScreen() {
         </View>
 
         <View style={[styles.accuracyBar, { top: insets.top + spacing.sm + 40 }]}>
-          <GpsAccuracyBadge accuracyMeters={liveAccuracy} />
+          {isRecording ? (
+            <RecordingBadge elapsedMs={recordingMs} maxMs={CAMERA.maxVideoSeconds * 1000} />
+          ) : (
+            <GpsAccuracyBadge accuracyMeters={liveAccuracy} />
+          )}
         </View>
 
-        <CameraShutterButton onPress={handleShutterPress} />
+        <View style={styles.controls} pointerEvents="box-none">
+          <CameraZoomControl
+            stops={zoomStops}
+            zoom={zoom}
+            neutralZoom={device?.neutralZoom ?? 1}
+            onSelect={setZoom}
+          />
+          <CameraModeSwitch mode={mode} onChange={setMode} disabled={isRecording} />
+          <CameraShutterButton
+            onPress={onShutter}
+            mode={mode}
+            recording={isRecording}
+            disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
+          />
+        </View>
+
         <CaptureToast
           message={
             lastSavedLabel ? `Saved · ${lastSavedLabel}${lastSavedIsPrecise ? '' : ' · low accuracy'}` : null
           }
           warn={!lastSavedIsPrecise}
         />
+
+        {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
       </View>
     </CameraPermissionGate>
   );
@@ -85,7 +157,7 @@ const styles = StyleSheet.create({
   },
   noDeviceText: {
     fontFamily: fontFamily.regular,
-    color: 'rgba(255,255,255,0.65)',
+    color: colors.onGlassMuted,
     fontSize: 12.5,
     textAlign: 'center',
     lineHeight: 18,
@@ -96,11 +168,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs + 2,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.glass,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 3,
   },
   taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
   accuracyBar: { position: 'absolute', alignSelf: 'center' },
+  controls: {
+    position: 'absolute',
+    bottom: 44,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
 });

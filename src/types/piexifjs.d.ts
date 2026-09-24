@@ -12,7 +12,13 @@ declare module 'piexifjs' {
     GPSTimeStamp: number;
   };
 
+  export const ImageIFD: {
+    /** 1-8: how the viewer must rotate/flip the pixels to display the photo upright. */
+    Orientation: number;
+  };
+
   interface ExifDict {
+    '0th'?: Record<number, unknown>;
     GPS?: Record<number, unknown>;
     [key: string]: unknown;
   }

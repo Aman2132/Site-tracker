@@ -35,9 +35,9 @@ Which tab set you get is decided entirely by the `appRole` field on your
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Framework | Expo SDK 51 + React Native 0.74 | **Custom dev-client**, not Expo Go |
+| Framework | Expo SDK 57 + React Native 0.86 (React 19.2, TypeScript 6) | **Custom dev-client**, not Expo Go. **New Architecture only** — SDK 55+ cannot turn it off. Android targets API 36 with mandatory edge-to-edge. |
 | Language | TypeScript (`strict: true`) | No `.js` allowed under `src/` |
-| Navigation | React Navigation (bottom tabs) | Auth-gated root |
+| Navigation | React Navigation 7 (bottom tabs) | Auth-gated root |
 | State | Zustand | One store per domain, selector-based subscriptions |
 | Maps | `@rnmapbox/maps` | Falls back to a static map if no token |
 | Camera | `react-native-vision-camera` | Native module |
@@ -562,8 +562,8 @@ signed-in person; the on-disk queue is filtered by `personId` on load.
 |---|---|
 | ~~`notifyLocally()`~~ | **Removed** from `pushService.ts`. |
 | ~~`getCurrentFix()`~~ | **Removed** from `locationService.ts`. |
-| `expo-sensors` | **Still present.** Unused, but it is a *native* module — removing it changes autolinking, and that can only be validated by a full Android build, which is currently blocked (§9.6). Deferred deliberately rather than changed blind. |
-| `expo-background-fetch` | Same as above. |
+| ~~`expo-sensors`~~ | **Removed** during the SDK 57 upgrade (unused). |
+| ~~`expo-background-fetch`~~ | **Removed** during the SDK 57 upgrade (unused, and deprecated by Expo in SDK 53). |
 | `src/constants/mockData.ts` | Still used as the no-Firebase fallback *and* as the seed script's source. Dual purpose is fine, but worth knowing it is not dead. |
 
 ### 9.5 Testing

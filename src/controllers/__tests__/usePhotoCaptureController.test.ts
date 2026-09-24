@@ -116,17 +116,23 @@ describe('usePhotoCaptureController geotag source', () => {
     expect(result.current.lastSavedLabel).toBe('±45 m');
   });
 
-  it('falls back to the configured default when no fix has arrived yet', async () => {
-    // Shutter pressed before GPS locks: the photo still saves, but with the
-    // 9999 sentinel so the UI can warn it is not a real fix.
+  it('refuses to capture before the first GPS fix, rather than tagging a guessed location', async () => {
     (watchPreciseFix as jest.Mock).mockImplementation(() => jest.fn());
 
     const { result } = renderHook(() => usePhotoCaptureController());
+    expect(result.current.hasFix).toBe(false);
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
-    const [photo] = usePhotoStore.getState().photos;
-    expect(photo.accuracy).toBe(9999);
-    expect(result.current.lastSavedIsPrecise).toBe(false);
+    expect((camera as unknown as { takePhoto: jest.Mock }).takePhoto).not.toHaveBeenCalled();
+    expect(usePhotoStore.getState().photos).toHaveLength(0);
+  });
+
+  it('reports hasFix once the first fix arrives', async () => {
+    primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
+
+    const { result } = renderHook(() => usePhotoCaptureController());
+
+    expect(result.current.hasFix).toBe(true);
   });
 
   it('does not capture at all when nobody is signed in', async () => {

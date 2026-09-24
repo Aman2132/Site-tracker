@@ -15,6 +15,11 @@ export default function PhotoGridCell({ photo }: { photo: Photo }) {
           {photo.lat.toFixed(4)}, {photo.lng.toFixed(4)}
         </Text>
       </View>
+      {photo.mediaType === 'video' && (
+        <View style={styles.playWrap} pointerEvents="none">
+          <Ionicons name="play-circle" size={30} color={colors.white} />
+        </View>
+      )}
       {!photo.synced && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>QUEUED</Text>
@@ -42,6 +47,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxs + 1,
   },
   overlayText: { flex: 1, color: colors.white, fontSize: 9, fontFamily: 'monospace' },
+  playWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badge: {
     position: 'absolute',
     top: spacing.sm - 2,

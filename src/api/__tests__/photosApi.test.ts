@@ -71,7 +71,7 @@ function mockBucket({ uploadError }: { uploadError?: Error } = {}) {
 describe('uploadPhotos', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })) as never;
+    globalThis.fetch = jest.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })) as never;
   });
 
   it('writes the file under the owning worker path, then records the metadata', async () => {
@@ -95,6 +95,51 @@ describe('uploadPhotos', () => {
     expect(doc.uri).toBe('https://cdn.example/a.jpg');
     expect(doc.synced).toBe(true);
     expect(doc.personId).toBe('worker-1');
+  });
+
+  it('uploads a video as an mp4 with the right content type', async () => {
+    const { upload } = mockBucket();
+
+    await uploadPhotos([{ ...pending, id: 'local-9', mediaType: 'video', durationMs: 12_000 }]);
+
+    expect(upload).toHaveBeenCalledWith('worker-1/local-9.mp4', expect.anything(), {
+      contentType: 'video/mp4',
+      upsert: true,
+    });
+  });
+
+  it('records the clip length for a video', async () => {
+    mockBucket();
+
+    await uploadPhotos([{ ...pending, mediaType: 'video', durationMs: 12_000 }]);
+
+    const [, doc] = (addDoc as jest.Mock).mock.calls[0];
+    expect(doc.mediaType).toBe('video');
+    expect(doc.durationMs).toBe(12_000);
+  });
+
+  it('sends no durationMs field for a photo, since Firestore rejects undefined values', async () => {
+    mockBucket();
+
+    await uploadPhotos([pending]);
+
+    const [, doc] = (addDoc as jest.Mock).mock.calls[0];
+    expect(doc).not.toHaveProperty('durationMs');
+    expect(Object.values(doc)).not.toContain(undefined);
+  });
+
+  it('treats a record saved before video existed as a photo', async () => {
+    const { upload } = mockBucket();
+    const legacy: Photo = { ...pending };
+    delete legacy.mediaType;
+
+    await uploadPhotos([legacy]);
+
+    expect(upload).toHaveBeenCalledWith('worker-1/local-1.jpg', expect.anything(), {
+      contentType: 'image/jpeg',
+      upsert: true,
+    });
+    expect((addDoc as jest.Mock).mock.calls[0][1].mediaType).toBe('photo');
   });
 
   it('leaves no orphan metadata when the file upload fails', async () => {

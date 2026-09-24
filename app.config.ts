@@ -1,8 +1,14 @@
 import { ExpoConfig } from 'expo/config';
 
-// Build-time only — never bundled into the JS app. Required to download the
-// Mapbox Android SDK during `expo prebuild` / the native build.
-const MAPBOX_DOWNLOADS_TOKEN = process.env.MAPBOX_DOWNLOADS_TOKEN ?? '';
+// Build-time only — never bundled into the JS app. @rnmapbox/maps reads its
+// Android SDK download token from RNMAPBOX_MAPS_DOWNLOAD_TOKEN (the old
+// RNMapboxMapsDownloadToken plugin prop is deprecated and wrote the secret
+// into gradle.properties). Our .env has always called it MAPBOX_DOWNLOADS_TOKEN,
+// so honour that name too rather than forcing a rename.
+process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN ??= process.env.MAPBOX_DOWNLOADS_TOKEN ?? '';
+
+// EAS sets this on its build servers; locally it is undefined.
+const isProductionBuild = process.env.EAS_BUILD_PROFILE === 'production';
 
 const config: ExpoConfig = {
   name: 'Site Tracker',
@@ -12,13 +18,10 @@ const config: ExpoConfig = {
   scheme: 'sitetracker',
   version: '1.0.0',
   orientation: 'portrait',
-  userInterfaceStyle: 'automatic',
+  // The UI is a fixed light design with no dark palette, so pin it. 'automatic'
+  // would flip native dialogs/keyboards dark on a dark-mode phone under light screens.
+  userInterfaceStyle: 'light',
   icon: './assets/icon.png',
-  splash: {
-    image: './assets/splash-icon.png',
-    backgroundColor: '#fbf8f2',
-    resizeMode: 'contain',
-  },
   android: {
     package: 'com.sitetracker.app',
     adaptiveIcon: {
@@ -40,7 +43,17 @@ const config: ExpoConfig = {
     ],
   },
   plugins: [
-    'expo-splash-screen',
+    [
+      // The top-level `splash` key no longer exists; the splash is configured
+      // through this plugin only.
+      'expo-splash-screen',
+      {
+        image: './assets/splash-icon.png',
+        backgroundColor: '#fbf8f2',
+        resizeMode: 'contain',
+        imageWidth: 200,
+      },
+    ],
     [
       'expo-location',
       {
@@ -54,15 +67,12 @@ const config: ExpoConfig = {
       'react-native-vision-camera',
       {
         cameraPermissionText: 'Site Tracker needs the camera to take geotagged site photos.',
+        enableMicrophonePermission: true,
+        microphonePermissionText: 'Site Tracker uses the microphone to record sound with site videos.',
         enableCodeScanner: false,
       },
     ],
-    [
-      '@rnmapbox/maps',
-      {
-        RNMapboxMapsDownloadToken: MAPBOX_DOWNLOADS_TOKEN,
-      },
-    ],
+    '@rnmapbox/maps',
     [
       'expo-notifications',
       {
@@ -75,6 +85,8 @@ const config: ExpoConfig = {
         savePhotosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
         photosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
         isAccessMediaLocationEnabled: true,
+        // We only save photos and videos; never read audio files.
+        granularPermissions: ['photo', 'video'],
       },
     ],
     [
@@ -82,6 +94,12 @@ const config: ExpoConfig = {
       {
         android: {
           minSdkVersion: 26,
+          // The New Architecture compiles a lot of C++ per chip type, and all
+          // four at once can exhaust RAM on a dev laptop (Windows error 1455,
+          // "paging file too small"). Day-to-day builds only need the phone
+          // (arm64-v8a) and the emulator (x86_64). Production keeps the full
+          // default set so older 32-bit Android devices are still supported.
+          buildArchs: isProductionBuild ? undefined : ['arm64-v8a', 'x86_64'],
         },
       },
     ],
