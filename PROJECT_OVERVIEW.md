@@ -39,7 +39,7 @@ Which tab set you get is decided entirely by the `appRole` field on your
 | Language | TypeScript (`strict: true`) | No `.js` allowed under `src/` |
 | Navigation | React Navigation 7 (bottom tabs) | Auth-gated root |
 | State | Zustand | One store per domain, selector-based subscriptions |
-| Maps | `@rnmapbox/maps` | Falls back to a static map if no token |
+| Maps | `react-native-maps` (Google provider) + `expo-sensors` | 3D buildings, compass/tilt-driven camera, motion trails. Falls back to a static map if no API key |
 | Camera | `react-native-vision-camera` | Native module |
 | Location | `expo-location` + `expo-task-manager` | Background foreground-service task |
 | EXIF | `piexifjs` | GPS burned in locally, fully offline |
@@ -49,7 +49,7 @@ Which tab set you get is decided entirely by the `appRole` field on your
 | File storage | Supabase Storage | Not Firebase Storage — see §4 |
 | Fonts | Plus Jakarta Sans | Loaded before first render |
 
-> **Why a dev-client and not Expo Go:** Mapbox, Vision Camera and
+> **Why a dev-client and not Expo Go:** Google Maps, Vision Camera and
 > expo-notifications all ship native code that Expo Go cannot load. You must
 > run `npx expo prebuild -p android` and build the app yourself.
 
@@ -76,7 +76,7 @@ flowchart TB
         STORE["Storage<br/>bucket: Photos"]
     end
 
-    MB["Mapbox<br/>map tiles"]
+    MB["Google Maps<br/>map tiles"]
 
     W -->|sign in| AUTH
     W -->|"GPS fix every ~15s"| RTDB
@@ -428,8 +428,8 @@ client-side.
 - Distance uses an **equirectangular approximation**, not haversine — far
   cheaper and accurate enough at site scale (tens to hundreds of metres).
   See [`geo.ts:21-25`](src/utils/geo.ts#L21-L25).
-- Mapbox has no native geo-radius circle layer, so the fence is drawn by
-  generating a 64-point GeoJSON polygon — [`geo.ts:46`](src/utils/geo.ts#L46).
+- The fence is drawn on the live map with react-native-maps' native
+  geo-radius `<Circle>` — see [`LiveCrewMap.tsx`](src/components/owner/LiveCrewMap.tsx).
 - Below 80 m the UI warns that normal GPS drift will cause false
   arrive/leave readings (`driftSafeRadiusMeters`).
 
@@ -485,7 +485,7 @@ The `{personId}/` path prefix is organisational, **not** a security boundary.
 ## 8. Running the project
 
 ```bash
-cp .env.example .env    # fill in Mapbox + Firebase + Supabase values
+cp .env.example .env    # fill in Google Maps + Firebase + Supabase values
 npm install
 npx expo prebuild -p android
 npm run android
@@ -506,8 +506,10 @@ roster, creating the Supabase bucket) is covered step by step in
 
 **Environment variables** — everything prefixed `EXPO_PUBLIC_` is inlined
 into the JS bundle at build time and is therefore public by definition.
-`MAPBOX_DOWNLOADS_TOKEN` is the exception: it is build-time only, used to
-download the Mapbox SDK during prebuild, and never reaches the bundle.
+`EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is used on both sides: the JS bundle (to
+decide whether to draw the live map) and the Android manifest, where the
+Google Maps SDK reads it — so changing it needs a rebuild. Protect it with an
+Android-app restriction in Google Cloud Console; it cannot be kept secret.
 
 ---
 

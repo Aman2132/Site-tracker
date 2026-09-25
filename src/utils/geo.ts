@@ -39,28 +39,52 @@ export function offsetMeters(point: GeoPoint, center: GeoPoint): { east: number;
 }
 
 /**
- * Approximates a geographic circle as a GeoJSON polygon (Mapbox has no
- * built-in geo-radius circle layer, unlike react-native-maps' <Circle>).
- * Same equirectangular approximation as distanceMeters, inverted.
+ * Compass bearing from `from` to `to`, in degrees clockwise from north
+ * (0 = north, 90 = east). Same flat-earth approximation as distanceMeters —
+ * plenty for the few metres between two consecutive crew positions.
  */
-export function geoCirclePolygon(
-  center: GeoPoint,
-  radiusMeters: number,
-  points = 64
-): GeoJSON.Feature<GeoJSON.Polygon> {
-  const latRad = (center.lat * Math.PI) / 180;
-  const dLat = radiusMeters / METERS_PER_DEGREE_LAT;
-  const dLng = radiusMeters / (METERS_PER_DEGREE_LAT * Math.cos(latRad));
+export function bearingDegrees(from: GeoPoint, to: GeoPoint): number {
+  const { east, north } = offsetMeters(to, from);
+  const degrees = (Math.atan2(east, north) * 180) / Math.PI;
+  return (degrees + 360) % 360;
+}
 
-  const ring: [number, number][] = [];
-  for (let i = 0; i <= points; i++) {
-    const angle = (i / points) * 2 * Math.PI;
-    ring.push([center.lng + dLng * Math.cos(angle), center.lat + dLat * Math.sin(angle)]);
+/**
+ * Adds a position to a movement trail. Points within `minStepMeters` of the
+ * previous one are GPS jitter, not movement, and are dropped; the trail keeps
+ * only the newest `maxLength` points. Returns the same array when nothing
+ * changed, so a store update can be skipped.
+ */
+export function appendTrailPoint(
+  trail: GeoPoint[],
+  point: GeoPoint,
+  maxLength: number,
+  minStepMeters: number
+): GeoPoint[] {
+  const last = trail[trail.length - 1];
+  if (last && distanceMeters(last, point) < minStepMeters) return trail;
+  const next = [...trail, { lat: point.lat, lng: point.lng }];
+  return next.length > maxLength ? next.slice(next.length - maxLength) : next;
+}
+
+/**
+ * Next trails for a whole crew snapshot: extends each person's trail with
+ * their current position and forgets people no longer in the roster.
+ * Returns the same object when nothing changed.
+ */
+export function nextTrails(
+  trails: Record<string, GeoPoint[]>,
+  people: { id: string; lat: number; lng: number }[],
+  maxLength: number,
+  minStepMeters: number
+): Record<string, GeoPoint[]> {
+  let changed = Object.keys(trails).length !== people.length;
+  const next: Record<string, GeoPoint[]> = {};
+  for (const person of people) {
+    const previous = trails[person.id];
+    const updated = appendTrailPoint(previous ?? [], person, maxLength, minStepMeters);
+    if (updated !== previous) changed = true;
+    next[person.id] = updated;
   }
-
-  return {
-    type: 'Feature',
-    properties: {},
-    geometry: { type: 'Polygon', coordinates: [ring] },
-  };
+  return changed ? next : trails;
 }

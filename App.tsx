@@ -7,17 +7,13 @@ import {
   useFonts,
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { NavigationContainer } from '@react-navigation/native';
-import Mapbox from '@rnmapbox/maps';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ErrorBoundary from '@/components/common/ErrorBoundary';
-import { MAPBOX_PUBLIC_TOKEN } from '@/constants/config';
 import RootNavigator from '@/navigation/RootNavigator';
-
-if (MAPBOX_PUBLIC_TOKEN) Mapbox.setAccessToken(MAPBOX_PUBLIC_TOKEN);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 

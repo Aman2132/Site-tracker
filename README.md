@@ -35,12 +35,12 @@ api/ owns the backend boundary (Firebase).
 
 ## Run it
 
-Uses `react-native-vision-camera`, `@rnmapbox/maps`, `expo-notifications` and
+Uses `react-native-vision-camera`, `react-native-maps` (Google Maps), `expo-sensors`, `expo-notifications` and
 `expo-media-library`, all of which need native code Expo Go can't run — this
 is a custom dev-client build, not the managed Expo Go workflow.
 
 ```
-cp .env.example .env   # fill in your Mapbox + Firebase config, see .env.example
+cp .env.example .env   # fill in your Google Maps + Firebase + Supabase config, see .env.example
 npm install
 npx expo prebuild -p android
 npm run android
@@ -122,6 +122,36 @@ on Firebase, still free with no card required.
 eas build --profile preview --platform android   # installable APK, no store needed
 eas build --profile production --platform android # Play Store app bundle
 ```
+
+## Live map (owner)
+
+Google Maps via `react-native-maps`. Without `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`
+in `.env` the owner map falls back to a static schematic; the key is written
+into the Android manifest at build time, so adding or changing it needs a
+rebuild (`npx expo prebuild -p android` then `npm run android`), not just a
+Metro reload.
+
+Getting a key: Google Cloud Console -> create/select a project -> APIs &
+Services -> Library -> enable **Maps SDK for Android** -> Credentials ->
+Create credentials -> API key. Restrict it to Android apps with package
+`com.sitetracker.app` plus your signing SHA-1 (`cd android && ./gradlew
+signingReport`). Google requires a billing account on the project, but the
+Maps SDK for mobile map loads is free (no per-load charge).
+
+What it does:
+- **3D**: 60° tilted camera at zoom 17.5 with Google's 3D buildings. Google
+  only extrudes buildings on the *standard* style, and only where it has
+  building data; satellite/hybrid imagery is flat. "Terrain" is shaded relief,
+  not 3D elevation — the Android Maps SDK has no 3D terrain or photorealistic
+  3D tiles.
+- **Motion mode** (compass button): the phone's compass turns the map with
+  you and raising the phone tilts it into 3D (`services/motionService.ts`,
+  `controllers/useMapMotionController.ts`). Readings are smoothed and
+  deadbanded so the map does not jitter.
+- **Live crew**: markers glide between positions, show a direction arrow while
+  someone is walking/driving, and leave a fading motion trail of their last 30
+  positions (tunables in `LIVE_MAP`, `src/constants/config.ts`). Tapping a
+  person flies to them and keeps following as they move.
 
 ## Known gaps to close before shipping
 

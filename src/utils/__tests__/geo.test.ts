@@ -1,4 +1,12 @@
-import { distanceMeters, geoCirclePolygon, isWithinRadius, offsetMeters, plusCodeFor } from '@/utils/geo';
+import {
+  appendTrailPoint,
+  bearingDegrees,
+  distanceMeters,
+  isWithinRadius,
+  nextTrails,
+  offsetMeters,
+  plusCodeFor,
+} from '@/utils/geo';
 
 describe('distanceMeters', () => {
   it('is zero for the same point', () => {
@@ -84,22 +92,67 @@ describe('offsetMeters', () => {
   });
 });
 
-describe('geoCirclePolygon', () => {
-  it('produces a closed ring with the requested point count', () => {
-    const polygon = geoCirclePolygon({ lat: 28.6139, lng: 77.209 }, 150, 32);
-    const ring = polygon.geometry.coordinates[0];
-    expect(ring).toHaveLength(33); // 32 segments + closing point
-    expect(ring[0]).toEqual(ring[ring.length - 1]);
+describe('bearingDegrees', () => {
+  const origin = { lat: 27.7172, lng: 85.324 };
+
+  it('points north, east, south and west correctly', () => {
+    expect(bearingDegrees(origin, { lat: origin.lat + 0.001, lng: origin.lng })).toBeCloseTo(0, 1);
+    expect(bearingDegrees(origin, { lat: origin.lat, lng: origin.lng + 0.001 })).toBeCloseTo(90, 1);
+    expect(bearingDegrees(origin, { lat: origin.lat - 0.001, lng: origin.lng })).toBeCloseTo(180, 1);
+    expect(bearingDegrees(origin, { lat: origin.lat, lng: origin.lng - 0.001 })).toBeCloseTo(270, 1);
   });
 
-  it('keeps every ring point roughly radiusMeters from the center', () => {
-    const center = { lat: 28.6139, lng: 77.209 };
-    const radiusMeters = 200;
-    const polygon = geoCirclePolygon(center, radiusMeters, 16);
-    const ring = polygon.geometry.coordinates[0];
+  it('always returns 0-360', () => {
+    const bearing = bearingDegrees(origin, { lat: origin.lat + 0.001, lng: origin.lng - 0.00001 });
+    expect(bearing).toBeGreaterThanOrEqual(0);
+    expect(bearing).toBeLessThan(360);
+  });
+});
 
-    for (const [lng, lat] of ring) {
-      expect(distanceMeters(center, { lat, lng })).toBeCloseTo(radiusMeters, -1);
-    }
+describe('appendTrailPoint', () => {
+  const at = (lat: number) => ({ lat, lng: 85.324 });
+
+  it('starts a trail from nothing', () => {
+    expect(appendTrailPoint([], at(27.7), 5, 2)).toEqual([at(27.7)]);
+  });
+
+  it('ignores jitter smaller than the minimum step, returning the same array', () => {
+    const trail = [at(27.7)];
+    expect(appendTrailPoint(trail, at(27.700001), 5, 2)).toBe(trail);
+  });
+
+  it('adds real movement', () => {
+    expect(appendTrailPoint([at(27.7)], at(27.7001), 5, 2)).toHaveLength(2);
+  });
+
+  it('keeps only the newest points', () => {
+    let trail: { lat: number; lng: number }[] = [];
+    for (let i = 0; i < 10; i += 1) trail = appendTrailPoint(trail, at(27.7 + i * 0.001), 4, 2);
+    expect(trail).toHaveLength(4);
+    expect(trail[3].lat).toBeCloseTo(27.709, 6);
+  });
+
+  it('stores only lat/lng, not the whole person', () => {
+    const person = { lat: 1, lng: 2, name: 'Asha' };
+    expect(appendTrailPoint([], person, 5, 2)).toEqual([{ lat: 1, lng: 2 }]);
+  });
+});
+
+describe('nextTrails', () => {
+  const person = (id: string, lat: number) => ({ id, lat, lng: 85.324 });
+
+  it('returns the same object when nobody moved', () => {
+    const trails = nextTrails({}, [person('a', 27.7)], 5, 2);
+    expect(nextTrails(trails, [person('a', 27.7)], 5, 2)).toBe(trails);
+  });
+
+  it('extends the trail of someone who moved', () => {
+    const trails = nextTrails({}, [person('a', 27.7)], 5, 2);
+    expect(nextTrails(trails, [person('a', 27.701)], 5, 2).a).toHaveLength(2);
+  });
+
+  it('forgets people who left the roster', () => {
+    const trails = nextTrails({}, [person('a', 27.7), person('b', 27.7)], 5, 2);
+    expect(Object.keys(nextTrails(trails, [person('a', 27.7)], 5, 2))).toEqual(['a']);
   });
 });

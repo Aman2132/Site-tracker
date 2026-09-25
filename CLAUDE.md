@@ -71,7 +71,7 @@ src/
                   navigation param lists. Shared vocabulary — everything else
                   imports from here, this imports from nothing else in src/.
   constants/      theme.ts (design tokens), config.ts (behavioral tunables +
-                  Firebase/Supabase/Mapbox config from env), mockData.ts
+                  Firebase/Supabase/Google Maps config from env), mockData.ts
                   (seed data — no longer read by the app itself, only by
                   scripts/seedFirebase.js).
   api/            The backend boundary — real Firebase (Firestore + Realtime

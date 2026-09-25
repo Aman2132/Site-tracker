@@ -20,8 +20,8 @@ interface StaticSiteMapProps {
 }
 
 /**
- * Schematic stand-in for the live Mapbox view, used until a real access
- * token is configured (see .env.example). Draws the geofence and crew
+ * Schematic stand-in for the live Google map, used until a Maps API key
+ * is configured (see .env.example). Draws the geofence and crew
  * positions to relative scale rather than trying to fake map tiles.
  */
 export default function StaticSiteMap({ site, people, onSelectPerson }: StaticSiteMapProps) {
@@ -105,7 +105,7 @@ export default function StaticSiteMap({ site, people, onSelectPerson }: StaticSi
 
       <View style={[styles.previewBadge, shadow.sm]}>
         <Ionicons name="construct-outline" size={12} color={colors.textMuted} />
-        <Text style={styles.previewText}>Static preview · connect Mapbox for live tiles</Text>
+        <Text style={styles.previewText}>Static preview · add a Google Maps key for the live map</Text>
       </View>
     </View>
   );

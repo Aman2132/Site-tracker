@@ -78,8 +78,36 @@ export const MOCK_NETWORK_DELAY_MS = 400;
 
 export const DEFAULT_COORDS: { lat: number; lng: number } = { lat: 27.7172, lng: 85.324 };
 
-/** Public Mapbox token, inlined at build time — see .env.example. */
-export const MAPBOX_PUBLIC_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '';
+/** Google Maps SDK key, inlined at build time — see .env.example. Without it the owner map falls back to a static schematic. */
+export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+export const HAS_GOOGLE_MAPS_KEY = GOOGLE_MAPS_API_KEY.length > 0;
+
+/** Owner live map tunables. */
+export const LIVE_MAP = {
+  /** Camera tilt for the 3D view, in degrees (Google Maps caps this at ~67.5 depending on zoom). */
+  pitch3d: 60,
+  /** Close enough that 3D buildings are drawn (they only render from about zoom 17). */
+  zoom3d: 17.5,
+  /** Flat, top-down overview zoom. */
+  zoomOverview: 15.5,
+  /** How many past positions each crew member's trail keeps. */
+  trailLength: 30,
+  /** Positions closer than this to the previous trail point are noise, not movement. */
+  trailMinStepMeters: 2,
+  /** Sensor sample interval for compass/tilt. */
+  sensorIntervalMs: 100,
+  /** Ignore compass changes smaller than this, so the map is not constantly nudged. */
+  headingDeadbandDeg: 2,
+  /** Exponential smoothing for sensor readings (0-1, higher reacts faster). */
+  sensorSmoothing: 0.2,
+  /** Phone held flat -> top-down; held upright -> max tilt. Pitch range the phone maps onto. */
+  minPitch: 0,
+  maxPitch: 67,
+  /** Duration of camera animations for button-driven moves. */
+  cameraAnimationMs: 600,
+  /** Duration a crew marker glides from its old to its new position. */
+  markerGlideMs: 900,
+};
 
 /** Firebase project config, inlined at build time — see .env.example. */
 export const FIREBASE_CONFIG = {
