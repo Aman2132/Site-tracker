@@ -12,7 +12,8 @@ interface PhotoState {
    */
   loadedFor: string | null;
   setPhotos: (photos: Photo[], forPersonId: string) => void;
-  addPhoto: (photo: Omit<Photo, 'id' | 'synced'>) => void;
+  /** Adds a finished capture (id already assigned — see utils/photos newLocalPhotoId) to the top. */
+  addPhoto: (photo: Photo) => void;
   markAllSynced: () => void;
   clear: () => void;
 }
@@ -22,16 +23,7 @@ export const usePhotoStore = create<PhotoState>(set => ({
   loaded: false,
   loadedFor: null,
   setPhotos: (photos, forPersonId) => set({ photos, loaded: true, loadedFor: forPersonId }),
-  addPhoto: photo =>
-    set(state => ({
-      // Random suffix, not just the timestamp — two captures inside the same
-      // millisecond would otherwise collide and overwrite each other's
-      // Supabase Storage path (personId/photoId.jpg, uploaded with upsert).
-      photos: [
-        { ...photo, id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, synced: false },
-        ...state.photos,
-      ],
-    })),
+  addPhoto: photo => set(state => ({ photos: [photo, ...state.photos] })),
   markAllSynced: () =>
     set(state => ({
       photos: state.photos.map(photo => (photo.synced ? photo : { ...photo, synced: true })),

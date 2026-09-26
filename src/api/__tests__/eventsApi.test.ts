@@ -18,7 +18,7 @@ jest.mock('firebase/firestore', () => ({
 /** Feeds one snapshot through subscribeToEvents and returns what it emitted. */
 function emitEvents(docs: { id: string; data: () => unknown }[]): AppEvent[] {
   const onChange = jest.fn();
-  subscribeToEvents(onChange);
+  subscribeToEvents(onChange, jest.fn());
   const callback = (onSnapshot as jest.Mock).mock.calls[0][1];
   callback({ docs });
   return onChange.mock.calls[0][0];

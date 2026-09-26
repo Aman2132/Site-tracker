@@ -3,15 +3,21 @@ import type { Camera, VideoFile } from 'react-native-vision-camera';
 
 import { CAMERA, GEOTAG_ACCURACY } from '@/constants/config';
 import { writeGeotag } from '@/services/exifService';
+import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
 import { saveToDeviceGallery } from '@/services/mediaLibraryService';
-import { requestGallerySavePermission } from '@/services/permissionsService';
+import {
+  requestForegroundLocationPermission,
+  requestGallerySavePermission,
+} from '@/services/permissionsService';
+import { addLocalPhoto } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
-import { GeoFix } from '@/types/domain';
+import { GeoFix, Photo } from '@/types/domain';
 import { formatDuration } from '@/utils/camera';
 import { plusCodeFor } from '@/utils/geo';
 import { smoothAccuracy } from '@/utils/gps';
+import { captureFileName, newLocalPhotoId } from '@/utils/photos';
 
 const TAG = '[capture]';
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
@@ -44,6 +50,22 @@ async function saveToGalleryLogged(
   }
 }
 
+/**
+ * Moves the capture's file into permanent app storage under its capture file
+ * name (see utils/photos captureFileName). A failed move keeps the original
+ * file rather than losing the shot.
+ */
+async function keepFileLogged(kind: string, photo: Photo): Promise<string> {
+  try {
+    const uri = await keepCaptureFile(photo.uri, photo.personId, captureFileName(photo));
+    console.log(`${TAG} ${kind}: kept at ${uri}`);
+    return uri;
+  } catch (e) {
+    console.warn(`${TAG} ${kind}: could not move out of cache, keeping ${photo.uri} — ${errText(e)}`);
+    return photo.uri;
+  }
+}
+
 /** What the worker was doing when a clip started: the geotag is taken then, not when they stop. */
 interface ActiveRecording {
   camera: Camera;
@@ -57,14 +79,16 @@ interface ActiveRecording {
  * as the screen is mounted (started here, torn down on unmount — see
  * services/locationService.ts watchPreciseFix for why this is a separate,
  * screen-scoped stream rather than reusing the battery-conscious background
- * tracking task). A photo reads the watch's latest fix, burns it into EXIF
- * offline, queues locally, and drops a copy into the device gallery so the
- * geotag is visible outside the app too. A video is geotagged with the fix at
- * the moment recording starts and follows the same queue.
+ * tracking task). A photo reads the watch's latest fix and burns it into EXIF
+ * offline. Every capture is then moved into permanent app storage, written to
+ * its owner's saved list straight away (so it survives sign-out and restarts
+ * even if the Photos tab is never opened), and copied into the gallery album.
+ * A video is geotagged with the fix at the moment recording starts.
  */
 export function usePhotoCaptureController() {
   const addPhoto = usePhotoStore(state => state.addPhoto);
-  const workerId = useAuthStore(state => state.profile?.id);
+  /** Whoever is signed in — worker or owner; their captures are filed under them. */
+  const myId = useAuthStore(state => state.profile?.id);
   const [lastSavedLabel, setLastSavedLabel] = useState<string | null>(null);
   const [lastSavedIsPrecise, setLastSavedIsPrecise] = useState(true);
   /** Smoothed + rounded for display only; the raw fix used for geotagging lives in liveFixRef. */
@@ -95,18 +119,39 @@ export function usePhotoCaptureController() {
     });
   }, []);
 
-  // Asked once on screen focus rather than per shutter press, so the worker
-  // isn't prompted mid-capture.
+  // Asked once when the camera opens rather than per shutter press, so nobody
+  // is prompted mid-capture. Location comes first: the camera can't geotag
+  // without it, and an owner may never have been asked (workers are asked on
+  // their Home tab; owners don't have one). One at a time — Android drops a
+  // second permission request made while the first dialog is still open.
   useEffect(() => {
-    requestGallerySavePermission().then(granted => {
+    (async () => {
+      const location = await requestForegroundLocationPermission();
+      console.log(`${TAG} location permission granted=${location}`);
+      const granted = await requestGallerySavePermission();
       console.log(`${TAG} gallery permission granted=${granted}`);
       canSaveToGallery.current = granted;
-    });
+    })();
   }, []);
 
   const markGranted = useCallback(() => {
     canSaveToGallery.current = true;
   }, []);
+
+  /**
+   * Permanent file, then the saved list, then the screen, then the gallery
+   * copy. The saved list comes before the gallery because the gallery save can
+   * stop for a permission prompt — the shot must already be safe by then.
+   */
+  const keepCapture = useCallback(
+    async (kind: string, capture: Photo) => {
+      const photo = { ...capture, uri: await keepFileLogged(kind, capture) };
+      await addLocalPhoto(photo);
+      addPhoto(photo);
+      await saveToGalleryLogged(kind, photo.uri, canSaveToGallery.current, markGranted);
+    },
+    [addPhoto, markGranted]
+  );
 
   const stopRecordingTimer = useCallback(() => {
     if (recordingTimer.current) clearInterval(recordingTimer.current);
@@ -124,7 +169,7 @@ export function usePhotoCaptureController() {
 
   const capturePhoto = useCallback(
     async (camera: Camera, task: string) => {
-      if (!workerId || savingRef.current) return;
+      if (!myId || savingRef.current) return;
       // Never geotag from a guess: with no GPS fix yet there is nothing true to write.
       if (!liveFixRef.current) {
         console.warn(`${TAG} capturePhoto blocked — no GPS fix yet`);
@@ -150,20 +195,19 @@ export function usePhotoCaptureController() {
         });
         console.log(`${TAG} geotagged file: ${geoTaggedUri}`);
 
-        // Best-effort second copy. The queue below is the source of truth, so a
-        // full disk or a refused permission must not cost the worker the shot.
-        await saveToGalleryLogged('photo', geoTaggedUri, canSaveToGallery.current, markGranted);
-
-        addPhoto({
+        const takenAt = Date.now();
+        await keepCapture('photo', {
+          id: newLocalPhotoId(takenAt),
           uri: geoTaggedUri,
           mediaType: 'photo',
           lat,
           lng,
           accuracy,
           plusCode: plusCodeFor({ lat, lng }),
-          takenAt: Date.now(),
-          personId: workerId,
+          takenAt,
+          personId: myId,
           task,
+          synced: false,
         });
         setLastSavedIsPrecise(accuracy <= GEOTAG_ACCURACY.goodMeters);
         setLastSavedLabel(`±${Math.round(accuracy)} m`);
@@ -174,7 +218,7 @@ export function usePhotoCaptureController() {
         setIsSaving(false);
       }
     },
-    [addPhoto, workerId, markGranted]
+    [keepCapture, myId]
   );
 
   const finishVideo = useCallback(
@@ -183,15 +227,14 @@ export function usePhotoCaptureController() {
       recordingRef.current = null;
       stopRecordingTimer();
       setIsRecording(false);
-      if (!meta || !workerId) return;
+      if (!meta || !myId) return;
 
       const { lat, lng, accuracy } = meta.fix;
       const durationMs = Math.round(video.duration * 1000);
       const uri = video.path.startsWith('file://') ? video.path : `file://${video.path}`;
 
-      await saveToGalleryLogged('video', uri, canSaveToGallery.current, markGranted);
-
-      addPhoto({
+      await keepCapture('video', {
+        id: newLocalPhotoId(meta.startedAt),
         uri,
         mediaType: 'video',
         durationMs,
@@ -200,18 +243,19 @@ export function usePhotoCaptureController() {
         accuracy,
         plusCode: plusCodeFor({ lat, lng }),
         takenAt: meta.startedAt,
-        personId: workerId,
+        personId: myId,
         task: meta.task,
+        synced: false,
       });
       setLastSavedIsPrecise(accuracy <= GEOTAG_ACCURACY.goodMeters);
       setLastSavedLabel(`Video ${formatDuration(durationMs)} · ±${Math.round(accuracy)} m`);
     },
-    [addPhoto, workerId, stopRecordingTimer, markGranted]
+    [keepCapture, myId, stopRecordingTimer]
   );
 
   const startVideo = useCallback(
     (camera: Camera, task: string) => {
-      if (!workerId || recordingRef.current) return;
+      if (!myId || recordingRef.current) return;
       const fix = liveFixRef.current;
       if (!fix) {
         console.warn(`${TAG} startVideo blocked — no GPS fix yet`);
@@ -245,7 +289,7 @@ export function usePhotoCaptureController() {
         },
       });
     },
-    [workerId, finishVideo, stopRecordingTimer]
+    [myId, finishVideo, stopRecordingTimer]
   );
 
   const stopVideo = useCallback(() => {

@@ -7,22 +7,33 @@ import { AppEvent, EventKind } from '@/types/domain';
 const EVENTS_COLLECTION = 'events';
 const MAX_EVENTS = 100;
 
-/** Live activity feed for the owner's Activity screen — newest first. */
-export function subscribeToEvents(onChange: (events: AppEvent[]) => void): () => void {
+/**
+ * Live activity feed for the owner's Activity screen — newest first.
+ * `onError` fires if Firestore ends the listener (e.g. permission denied
+ * after sign-out); the listener is dead after that and must be re-subscribed.
+ */
+export function subscribeToEvents(
+  onChange: (events: AppEvent[]) => void,
+  onError: (error: Error) => void
+): () => void {
   const eventsQuery = query(
     collection(firestore, EVENTS_COLLECTION),
     orderBy('at', 'desc'),
     limit(MAX_EVENTS)
   );
-  return onSnapshot(eventsQuery, snapshot => {
-    onChange(
-      snapshot.docs.map(d => {
-        const data = d.data() as { text: string; kind: EventKind; at: { toMillis(): number } | number };
-        const at = typeof data.at === 'number' ? data.at : (data.at?.toMillis() ?? Date.now());
-        return { id: d.id, text: data.text, kind: data.kind, at };
-      })
-    );
-  });
+  return onSnapshot(
+    eventsQuery,
+    snapshot => {
+      onChange(
+        snapshot.docs.map(d => {
+          const data = d.data() as { text: string; kind: EventKind; at: { toMillis(): number } | number };
+          const at = typeof data.at === 'number' ? data.at : (data.at?.toMillis() ?? Date.now());
+          return { id: d.id, text: data.text, kind: data.kind, at };
+        })
+      );
+    },
+    onError
+  );
 }
 
 /** Persists a new activity event so it reaches every device watching the feed. */

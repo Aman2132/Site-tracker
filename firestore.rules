@@ -9,18 +9,37 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function me() {
+      return get(/databases/$(database)/documents/people/$(request.auth.uid)).data;
+    }
+
+    // A deactivated person (people/{uid}.active == false) is treated as
+    // signed out for every write below. Missing `active` means active.
+    function isActive() {
+      return signedIn() && me().get('active', true) != false;
+    }
+
     function isOwner() {
-      return signedIn() &&
-        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.appRole == 'owner';
+      return isActive() && me().appRole == 'owner';
     }
 
     // Roster: read by anyone signed in (the crew list + names are shared
-    // context). Existing profiles and owner accounts are admin-SDK-only
-    // (scripts/seedFirebase.js) — there's no in-app "edit employee" flow.
-    // Self-signup (LoginScreen "Create account") is the one exception: a
-    // brand-new user may create exactly their own profile, once, and only
-    // as a worker — appRole can never be self-assigned to 'owner', however
-    // the client dresses up the request. See peopleApi.createPersonProfile.
+    // context). Owner accounts are created by the seed script only.
+    //
+    // Self-signup (LoginScreen "Create account"): a brand-new user may create
+    // exactly their own profile, once, and only as a worker — appRole can
+    // never be self-assigned to 'owner', however the client dresses up the
+    // request. See peopleApi.createPersonProfile.
+    //
+    // Crew management (owner Crew screen): an owner may change someone's job
+    // title, app role and active flag — nothing else — but never their own
+    // appRole or active, so an owner can't demote or lock out themselves.
+    // See peopleApi.updatePersonProfile.
+    //
+    // Profile tab: anyone active may change their own name and photo — and
+    // only those two fields. The photo is a small inline JPEG data URI, capped
+    // well below Firestore's 1 MB document limit. See peopleApi.updateOwnProfile. Deleting is still Admin-SDK-only;
+    // deactivating is the in-app equivalent.
     match /people/{uid} {
       allow read: if signedIn();
       allow create: if signedIn()
@@ -32,7 +51,24 @@ service cloud.firestore {
         && request.resource.data.role is string
         && request.resource.data.color is string
         && request.resource.data.keys().hasOnly(['name', 'role', 'appRole', 'color']);
-      allow update, delete: if false;
+      allow update: if isOwner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'appRole', 'active'])
+        && request.resource.data.role is string
+        && request.resource.data.role.size() > 0
+        && request.resource.data.role.size() <= 60
+        && request.resource.data.appRole in ['owner', 'worker']
+        && request.resource.data.get('active', true) is bool
+        && (uid != request.auth.uid
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['appRole', 'active']));
+      allow update: if isActive()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'avatar'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.get('avatar', '') is string
+        && request.resource.data.get('avatar', '').size() <= 150000;
+      allow delete: if false;
     }
 
     // Single site config. Only the owner can move the geofence.
@@ -50,14 +86,14 @@ service cloud.firestore {
     // edited/deleted from the client — it's meant to be an audit trail.
     match /photos/{photoId} {
       allow read: if isOwner() || (signedIn() && resource.data.personId == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.personId == request.auth.uid;
+      allow create: if isActive() && request.resource.data.personId == request.auth.uid;
       allow update, delete: if false;
     }
 
     // Activity feed: shared, append-only.
     match /events/{eventId} {
       allow read: if signedIn();
-      allow create: if signedIn();
+      allow create: if isActive();
       allow update, delete: if false;
     }
 
@@ -67,7 +103,7 @@ service cloud.firestore {
     // notify).
     match /pushTokens/{uid} {
       allow read: if isOwner();
-      allow write: if signedIn() && request.auth.uid == uid;
+      allow write: if isActive() && request.auth.uid == uid;
     }
   }
 }

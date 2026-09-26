@@ -1,6 +1,8 @@
 import { selectPendingPhotos, usePhotoStore } from '@/store/usePhotoStore';
+import { Photo } from '@/types/domain';
 
-const capture = {
+const capture: Photo = {
+  id: 'local-1700000000000-abc123',
   uri: 'file:///tmp/shot.jpg',
   lat: 27.7172,
   lng: 85.324,
@@ -9,30 +11,17 @@ const capture = {
   takenAt: 1_700_000_000_000,
   personId: 'worker-1',
   task: 'Column grid L4',
+  synced: false,
 };
 
 describe('usePhotoStore', () => {
   beforeEach(() => usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null }));
 
-  it('gives two captures in the same millisecond distinct ids', () => {
-    const clock = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+  it('puts new captures on top', () => {
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'a', task: 'older' });
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'b', task: 'newer' });
 
-    usePhotoStore.getState().addPhoto(capture);
-    usePhotoStore.getState().addPhoto(capture);
-
-    const [first, second] = usePhotoStore.getState().photos;
-    expect(first.id).not.toBe(second.id);
-
-    clock.mockRestore();
-  });
-
-  it('queues new captures unsynced and newest-first', () => {
-    usePhotoStore.getState().addPhoto({ ...capture, task: 'older' });
-    usePhotoStore.getState().addPhoto({ ...capture, task: 'newer' });
-
-    const { photos } = usePhotoStore.getState();
-    expect(photos.map(p => p.task)).toEqual(['newer', 'older']);
-    expect(photos.every(p => !p.synced)).toBe(true);
+    expect(usePhotoStore.getState().photos.map(p => p.task)).toEqual(['newer', 'older']);
   });
 
   it('records whose photos are loaded, so a second person on the same handset reloads', () => {

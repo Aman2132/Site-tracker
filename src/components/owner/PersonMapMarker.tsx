@@ -50,7 +50,7 @@ export default function PersonMapMarker({
     setTracksViewChanges(true);
     const timer = setTimeout(() => setTracksViewChanges(false), REDRAW_WINDOW_MS);
     return () => clearTimeout(timer);
-  }, [moving, faded, headingDegrees]);
+  }, [moving, faded, headingDegrees, person.avatar]);
 
   return (
     <Marker
@@ -69,7 +69,14 @@ export default function PersonMapMarker({
           </View>
         )}
         <View style={[styles.avatar, shadow.md]}>
-          <InitialsAvatar name={person.name} color={person.color} size={38} faded={faded} ringed />
+          <InitialsAvatar
+            name={person.name}
+            color={person.color}
+            imageUri={person.avatar}
+            size={38}
+            faded={faded}
+            ringed
+          />
         </View>
       </View>
     </Marker>

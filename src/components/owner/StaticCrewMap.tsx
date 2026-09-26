@@ -4,29 +4,40 @@ import React from 'react';
 import { LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import InitialsAvatar from '@/components/common/InitialsAvatar';
-import { colors, fontFamily, glow, radius, shadow, spacing } from '@/constants/theme';
-import { Person, Site } from '@/types/domain';
-import { offsetMeters } from '@/utils/geo';
+import { DEFAULT_COORDS } from '@/constants/config';
+import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
+import { Person } from '@/types/domain';
+import { crewCenter, offsetMeters } from '@/utils/geo';
 
 const GRID_COLUMNS = 7;
 const GRID_ROWS = 13;
-const GEOFENCE_DISPLAY_RADIUS = 108;
+/** How far from the centre (px) the farthest crew member is drawn. */
 const MARKER_MAX_RADIUS = 150;
+/** Never zoom in closer than this, so two people a few metres apart don't look far apart. */
+const MIN_METERS_PER_PIXEL = 0.5;
 
-interface StaticSiteMapProps {
-  site: Site;
+interface StaticCrewMapProps {
   people: Person[];
   onSelectPerson: (person: Person) => void;
 }
 
 /**
  * Schematic stand-in for the live Google map, used until a Maps API key
- * is configured (see .env.example). Draws the geofence and crew
- * positions to relative scale rather than trying to fake map tiles.
+ * is configured (see .env.example). Centres on the crew and draws everyone
+ * to relative scale, sized so the farthest person still fits, rather than
+ * trying to fake map tiles.
  */
-export default function StaticSiteMap({ site, people, onSelectPerson }: StaticSiteMapProps) {
+export default function StaticCrewMap({ people, onSelectPerson }: StaticCrewMapProps) {
   const [size, setSize] = React.useState({ width: 0, height: 0 });
-  const metersPerPixel = site.radius / GEOFENCE_DISPLAY_RADIUS;
+  const center = crewCenter(people, DEFAULT_COORDS);
+  const farthest = Math.max(
+    0,
+    ...people.map(person => {
+      const { east, north } = offsetMeters(person, center);
+      return Math.hypot(east, north);
+    })
+  );
+  const metersPerPixel = Math.max(MIN_METERS_PER_PIXEL, farthest / MARKER_MAX_RADIUS);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -50,27 +61,8 @@ export default function StaticSiteMap({ site, people, onSelectPerson }: StaticSi
 
       {size.width > 0 && (
         <>
-          <LinearGradient
-            colors={['rgba(28,79,240,0.22)', 'rgba(28,79,240,0.05)']}
-            pointerEvents="none"
-            style={[
-              styles.geofence,
-              {
-                width: GEOFENCE_DISPLAY_RADIUS * 2,
-                height: GEOFENCE_DISPLAY_RADIUS * 2,
-                borderRadius: GEOFENCE_DISPLAY_RADIUS,
-                left: centerX - GEOFENCE_DISPLAY_RADIUS,
-                top: centerY - GEOFENCE_DISPLAY_RADIUS,
-              },
-            ]}
-          />
-          <View
-            pointerEvents="none"
-            style={[styles.siteMarker, glow(colors.primary, 0.5), { left: centerX - 6, top: centerY - 6 }]}
-          />
-
           {people.map(person => {
-            const { east, north } = offsetMeters(person, site);
+            const { east, north } = offsetMeters(person, center);
             const rawX = east / metersPerPixel;
             const rawY = -north / metersPerPixel;
             const dist = Math.hypot(rawX, rawY) || 1;
@@ -88,6 +80,7 @@ export default function StaticSiteMap({ site, people, onSelectPerson }: StaticSi
                 <InitialsAvatar
                   name={person.name}
                   color={person.color}
+                  imageUri={person.avatar}
                   size={36}
                   faded={person.kind === 'stale'}
                   ringed
@@ -115,21 +108,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.blueprint, overflow: 'hidden' },
   gridLineV: { position: 'absolute', top: 0, bottom: 0, width: 1, backgroundColor: colors.blueprintLine },
   gridLineH: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: colors.blueprintLine },
-  geofence: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: colors.primary,
-  },
-  siteMarker: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.white,
-  },
   markerWrap: { position: 'absolute', borderRadius: radius.pill },
   compass: {
     position: 'absolute',

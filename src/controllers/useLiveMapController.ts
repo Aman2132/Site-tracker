@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { HAS_GOOGLE_MAPS_KEY, LIVE_MAP } from '@/constants/config';
+import { DEFAULT_COORDS, HAS_GOOGLE_MAPS_KEY, LIVE_MAP } from '@/constants/config';
 import { useCrewTrackingController } from '@/controllers/useCrewTrackingController';
 import { useMapMotionController } from '@/controllers/useMapMotionController';
+import { getCurrentPosition } from '@/services/locationService';
+import { requestForegroundLocationPermission } from '@/services/permissionsService';
 import { Person } from '@/types/domain';
 import { MAP_STYLES, MapCameraCommand, MapCameraPosition, MapStyle } from '@/types/map';
-import { bearingDegrees } from '@/utils/geo';
+import { bearingDegrees, crewCenter } from '@/utils/geo';
 
 /**
  * Owner live map: crew positions and trails, plus all camera behaviour —
@@ -13,9 +15,13 @@ import { bearingDegrees } from '@/utils/geo';
  * "motion mode", where the phone's compass and tilt steer the camera.
  */
 export function useLiveMapController() {
-  const { people, trails, site, loaded } = useCrewTrackingController();
+  const crew = useCrewTrackingController();
+  const { trails, loaded } = crew;
+  // Deactivated people aren't tracked any more, so they don't belong on the map.
+  const people = useMemo(() => crew.people.filter(person => person.active !== false), [crew.people]);
 
-  const [is3d, setIs3d] = useState(true);
+  // Flat by default: with no site to zoom in on, an overview of the crew is the useful first view.
+  const [is3d, setIs3d] = useState(false);
   const [mapStyle, setMapStyle] = useState<MapStyle>('standard');
   const [motionMode, setMotionMode] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
@@ -33,26 +39,65 @@ export function useLiveMapController() {
   // follow them as new positions stream in.
   const selectedPerson = people.find(person => person.id === selectedPersonId) ?? null;
 
-  /** Where the camera starts, before any command has been issued. */
-  const initialCamera: MapCameraPosition | null = site
-    ? {
-        center: { lat: site.lat, lng: site.lng },
-        zoom: LIVE_MAP.zoom3d,
-        pitch: LIVE_MAP.pitch3d,
-        heading: 0,
-      }
-    : null;
+  /**
+   * Where the camera starts: over the crew as they were when the roster
+   * first loaded. Frozen after that, so the map doesn't jump every time
+   * someone moves — the Crew button re-centres on demand.
+   */
+  const initialCameraRef = useRef<MapCameraPosition | null>(null);
+  if (loaded && !initialCameraRef.current) {
+    initialCameraRef.current = {
+      center: crewCenter(people, DEFAULT_COORDS),
+      zoom: LIVE_MAP.zoomOverview,
+      pitch: 0,
+      heading: 0,
+    };
+  }
+  const initialCamera = initialCameraRef.current;
 
+  /** Back to an overview of everyone, wherever they are now. */
   const recenter = useCallback(() => {
-    if (!site) return;
     moveCamera({
-      center: { lat: site.lat, lng: site.lng },
-      zoom: is3d ? LIVE_MAP.zoom3d : LIVE_MAP.zoomOverview,
+      center: crewCenter(people, DEFAULT_COORDS),
+      zoom: LIVE_MAP.zoomOverview,
       pitch: is3d ? LIVE_MAP.pitch3d : 0,
       heading: motionMode ? undefined : 0,
       durationMs: LIVE_MAP.cameraAnimationMs,
     });
-  }, [site, is3d, motionMode, moveCamera]);
+  }, [people, is3d, motionMode, moveCamera]);
+
+  // "My location": ask for location only when it's first needed, then fly to this phone.
+  const [locating, setLocating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), LIVE_MAP.noticeMs);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const goToMyLocation = useCallback(async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      if (!(await requestForegroundLocationPermission())) {
+        setNotice('Allow location access to see where you are.');
+        return;
+      }
+      const here = await getCurrentPosition();
+      if (!here) {
+        setNotice("Couldn't find your location. Check that Location is on.");
+        return;
+      }
+      setSelectedPersonId(null); // stop following a crew member, or the camera would fly straight back
+      moveCamera({
+        center: { lat: here.lat, lng: here.lng },
+        zoom: LIVE_MAP.zoomMyLocation,
+        durationMs: LIVE_MAP.cameraAnimationMs,
+      });
+    } finally {
+      setLocating(false);
+    }
+  }, [locating, moveCamera]);
 
   const toggle3d = useCallback(() => {
     const next = !is3d;
@@ -123,8 +168,7 @@ export function useLiveMapController() {
   }, [people, trails]);
 
   return {
-    loaded: loaded && site !== null,
-    site,
+    loaded: loaded && initialCamera !== null,
     people,
     trails,
     headings,
@@ -139,6 +183,9 @@ export function useLiveMapController() {
     toggleMotionMode,
     heading: motion.heading,
     recenter,
+    goToMyLocation,
+    locating,
+    notice,
     selectedPerson,
     selectPerson,
     clearSelection,

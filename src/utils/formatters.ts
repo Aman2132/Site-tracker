@@ -25,7 +25,9 @@ export function formatAccuracy(accuracyMeters: number): string {
   return `±${Math.round(accuracyMeters)} m`;
 }
 
-export function formatBatteryPercent(batteryFraction: number): string {
+/** A 0–1 battery level as a percent; an em dash when the phone hasn't reported one. */
+export function formatBatteryPercent(batteryFraction: number | undefined): string {
+  if (batteryFraction == null) return '—';
   return `${Math.round(batteryFraction * 100)}%`;
 }
 

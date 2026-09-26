@@ -42,7 +42,7 @@ function ControlButton({
   );
 }
 
-/** Floating column of live-map controls: 3D, base map style, motion steering, recenter. */
+/** Floating column of live-map controls: 3D, base map style, motion steering, whole crew, my location. */
 export default function MapControls({
   is3d,
   onToggle3d,
@@ -52,6 +52,8 @@ export default function MapControls({
   onToggleMotionMode,
   heading,
   onRecenter,
+  onMyLocation,
+  locating,
 }: {
   is3d: boolean;
   onToggle3d: () => void;
@@ -62,6 +64,9 @@ export default function MapControls({
   /** Live compass heading while motion mode is on. */
   heading: number | null;
   onRecenter: () => void;
+  onMyLocation: () => void;
+  /** True while waiting for this phone's position. */
+  locating: boolean;
 }) {
   return (
     <View style={styles.column} pointerEvents="box-none">
@@ -90,10 +95,17 @@ export default function MapControls({
         }
       />
       <ControlButton
-        icon="locate-outline"
-        label="Site"
+        icon="people-outline"
+        label="Crew"
         onPress={onRecenter}
-        accessibilityLabel="Back to the site"
+        accessibilityLabel="Show the whole crew"
+      />
+      <ControlButton
+        icon="navigate-outline"
+        label={locating ? '...' : 'Me'}
+        active={locating}
+        onPress={onMyLocation}
+        accessibilityLabel="Go to my current location"
       />
     </View>
   );

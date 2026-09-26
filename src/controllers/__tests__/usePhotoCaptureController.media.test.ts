@@ -11,15 +11,22 @@ import { GeoFix } from '@/types/domain';
 jest.mock('@/constants/config', () => ({
   DEFAULT_COORDS: { lat: 27.7172, lng: 85.324 },
   GEOTAG_ACCURACY: { goodMeters: 20, watchIntervalMs: 500 },
+  LOCAL_MEDIA: { maxTaskChars: 60 },
   CAMERA: { maxVideoSeconds: 30 },
 }));
 jest.mock('@/services/exifService', () => ({
   writeGeotag: jest.fn(async (uri: string) => `${uri}-geo`),
 }));
+jest.mock('@/services/localMediaService', () => ({
+  // Pass-through by default: the file stays where it is.
+  keepCaptureFile: jest.fn(async (uri: string) => uri),
+}));
+jest.mock('@/services/photoQueueStorage', () => ({ addLocalPhoto: jest.fn(async () => undefined) }));
 jest.mock('@/services/locationService', () => ({ watchPreciseFix: jest.fn(() => jest.fn()) }));
 jest.mock('@/services/mediaLibraryService', () => ({ saveToDeviceGallery: jest.fn(async () => undefined) }));
 jest.mock('@/services/permissionsService', () => ({
   requestGallerySavePermission: jest.fn(async () => true),
+  requestForegroundLocationPermission: jest.fn(async () => true),
 }));
 
 const photoCamera = { takePhoto: jest.fn(async () => ({ path: '/tmp/shot.jpg' })) } as never;

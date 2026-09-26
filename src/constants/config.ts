@@ -13,19 +13,51 @@ export const LOCATION_TRACKING = {
   distanceIntervalMeters: 20,
 };
 
-export const GEOFENCE = {
-  minRadiusMeters: 40,
-  maxRadiusMeters: 400,
-  stepMeters: 10,
-  /** Below this, normal GPS drift causes false arrive/leave events. */
-  driftSafeRadiusMeters: 80,
-};
-
 export const ACTIVITY_THRESHOLDS = {
   /** Above this speed (m/s), classify as "vehicle". */
   vehicleSpeedMps: 2.5,
   /** Above this speed (m/s), classify as "walk". */
   walkSpeedMps: 0.3,
+};
+
+/**
+ * Android's activity recognition, which beats the speed thresholds above
+ * whenever it has a fresh, confident reading (see utils/activity.ts).
+ */
+export const ACTIVITY_RECOGNITION = {
+  /** How often the OS is asked for a reading. It may deliver less often when the phone is still. */
+  updateIntervalMs: 30_000,
+  /** Readings below this confidence (0–100) are ignored in favour of GPS speed. */
+  minConfidence: 60,
+  /** A reading older than this no longer describes what the worker is doing now. */
+  maxAgeMs: 3 * 60_000,
+};
+
+/** Profile tab: the person's own name and photo. */
+export const PROFILE = {
+  /**
+   * Avatars are stored inline on the person's Firestore profile (no file
+   * storage needed), so they're shrunk to a small square JPEG first — about
+   * 10 KB, cheap to send with every crew-list update.
+   */
+  avatarSizePx: 160,
+  avatarJpegQuality: 0.7,
+  maxNameChars: 60,
+};
+
+/** Forms that must stay usable with the on-screen keyboard open. */
+export const KEYBOARD = {
+  /**
+   * Room kept between the focused field and the top of the keyboard, so the
+   * form's submit button and the link under it stay visible, not just the field.
+   */
+  formBottomOffset: 150,
+};
+
+/** Phone battery reporting for the owner's crew view. */
+export const BATTERY = {
+  /** At or below this level (0–1), the owner's Activity feed gets a low-battery entry. */
+  lowLevel: 0.2,
 };
 
 export const GEOTAG_ACCURACY = {
@@ -73,6 +105,23 @@ export const CAMERA = {
   retryDelayMs: 700,
 };
 
+/**
+ * Where captures live on the phone. The app's own copy sits in private
+ * storage (survives sign-out and restarts, not an uninstall); the gallery copy
+ * goes into one named album, which does survive an uninstall and is what the
+ * Photos list is rebuilt from after a reinstall.
+ */
+export const LOCAL_MEDIA = {
+  /** Folder under the app's document directory, one subfolder per person. */
+  captureDir: 'captures',
+  /** Gallery album every capture is saved into. */
+  galleryAlbum: 'Site Tracker',
+  /** Assets fetched per page when scanning the album on sign-in. */
+  galleryPageSize: 200,
+  /** Longest task label kept in a capture's file name. */
+  maxTaskChars: 60,
+};
+
 /** Simulated network latency for the mock api/ layer, so loading states are real. */
 export const MOCK_NETWORK_DELAY_MS = 400;
 
@@ -88,6 +137,10 @@ export const LIVE_MAP = {
   pitch3d: 60,
   /** Close enough that 3D buildings are drawn (they only render from about zoom 17). */
   zoom3d: 17.5,
+  /** Zoom used when jumping to the owner's own location. */
+  zoomMyLocation: 17,
+  /** How long a "couldn't find your location" message stays on the map. */
+  noticeMs: 3500,
   /** Flat, top-down overview zoom. */
   zoomOverview: 15.5,
   /** How many past positions each crew member's trail keeps. */

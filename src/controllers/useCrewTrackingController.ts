@@ -1,19 +1,16 @@
 import { useEffect } from 'react';
 
 import { subscribeToCrew } from '@/api/peopleApi';
-import { fetchSite } from '@/api/siteApi';
 import { HAS_FIREBASE_CONFIG, LIVE_MAP } from '@/constants/config';
-import { SEED_PEOPLE, SEED_SITE } from '@/constants/mockData';
+import { SEED_PEOPLE } from '@/constants/mockData';
 import { useCrewStore } from '@/store/useCrewStore';
-import { useSiteStore } from '@/store/useSiteStore';
 import { Person } from '@/types/domain';
 import { nextTrails } from '@/utils/geo';
 
 /**
- * Live crew roster + site for the owner-side screens. Safe to call from
- * multiple screens — the crew subscription is wired once per app run
- * (see wireCrewSubscriptionOnce) and every screen just reads store state;
- * the site is a plain one-shot fetch since it rarely changes.
+ * Live crew roster for the owner-side screens. Safe to call from multiple
+ * screens — the crew subscription is wired once per app run (see
+ * wireCrewSubscriptionOnce) and every screen just reads store state.
  *
  * Without a real Firebase project (see HAS_FIREBASE_CONFIG), Firestore/RTDB
  * reads never resolve, so `loaded` would stay false forever and every
@@ -21,6 +18,7 @@ import { nextTrails } from '@/utils/geo';
  * static demo dataset instead, same spirit as useAuthController's bypass.
  */
 let crewSubscriptionWired = false;
+let unsubscribeCrew: (() => void) | null = null;
 
 /** Stores a roster snapshot and extends everyone's motion trail with it. */
 function receiveCrew(people: Person[]) {
@@ -37,30 +35,34 @@ function wireCrewSubscriptionOnce() {
     receiveCrew(SEED_PEOPLE);
     return;
   }
-  subscribeToCrew(receiveCrew);
+  unsubscribeCrew = subscribeToCrew(receiveCrew, error => {
+    // The server ended the listener (e.g. signed out underneath it). Let the
+    // next owner screen that mounts subscribe again rather than stay frozen.
+    console.warn('[crew] live roster stopped —', error.message);
+    unsubscribeCrew = null;
+    crewSubscriptionWired = false;
+  });
+}
+
+/**
+ * Closes the live roster before sign-out — otherwise Firestore rejects the
+ * still-open listener the moment nobody is signed in. The next owner to sign
+ * in gets a fresh subscription.
+ */
+export function stopCrewSubscription(): void {
+  unsubscribeCrew?.();
+  unsubscribeCrew = null;
+  crewSubscriptionWired = false;
 }
 
 export function useCrewTrackingController() {
   const people = useCrewStore(state => state.people);
   const trails = useCrewStore(state => state.trails);
-  const crewLoaded = useCrewStore(state => state.loaded);
-
-  const site = useSiteStore(state => state.site);
-  const siteLoaded = useSiteStore(state => state.loaded);
-  const setSite = useSiteStore(state => state.setSite);
+  const loaded = useCrewStore(state => state.loaded);
 
   useEffect(() => {
     wireCrewSubscriptionOnce();
   }, []);
 
-  useEffect(() => {
-    if (siteLoaded) return;
-    if (!HAS_FIREBASE_CONFIG) {
-      setSite(SEED_SITE);
-      return;
-    }
-    fetchSite().then(setSite);
-  }, [siteLoaded, setSite]);
-
-  return { people, trails, site, loaded: crewLoaded && siteLoaded };
+  return { people, trails, loaded };
 }

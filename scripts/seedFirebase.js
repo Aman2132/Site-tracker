@@ -1,7 +1,7 @@
 /**
  * One-time setup script: creates a Firebase Auth account + Firestore
  * `people/{uid}` doc for the owner and each seed worker (mirrors
- * src/constants/mockData.ts), plus the `sites/default` doc.
+ * src/constants/mockData.ts).
  *
  * Usage:
  *   cd scripts
@@ -24,7 +24,6 @@ admin.initializeApp({ credential: admin.credential.cert(require(keyPath)) });
 const auth = admin.auth();
 const db = admin.firestore();
 
-const SITE = { name: 'Kathmandu Demo Site', lat: 27.7172, lng: 85.324, radius: 150 };
 
 // A `password` here pins a fixed credential instead of generating a random
 // one, and re-running the script resets it. Only the shared admin login uses
@@ -52,8 +51,6 @@ function randomPassword() {
 }
 
 async function main() {
-  await db.collection('sites').doc('default').set(SITE);
-  console.log('Seeded sites/default');
 
   const credentials = [];
   for (const person of PEOPLE) {

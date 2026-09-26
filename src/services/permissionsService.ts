@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library/legacy';
+import { Linking } from 'react-native';
 
 import { LocationPermissionState } from '@/types/domain';
 
@@ -13,6 +14,24 @@ export async function requestLocationPermissions(): Promise<LocationPermissionSt
 
   const background = await Location.requestBackgroundPermissionsAsync();
   return { granted: true, background: background.status === 'granted' };
+}
+
+/**
+ * Opens this app's page in the phone's Settings. The only way forward once a
+ * permission has been refused for good: Android then stops showing the prompt,
+ * and a request returns "denied" without asking.
+ */
+export async function openAppSettings(): Promise<void> {
+  await Linking.openSettings().catch(() => {});
+}
+
+/**
+ * Foreground location only — enough for the owner's "my location" map
+ * button, without asking an owner for background tracking they don't need.
+ */
+export async function requestForegroundLocationPermission(): Promise<boolean> {
+  const result = await Location.requestForegroundPermissionsAsync().catch(() => null);
+  return result?.status === 'granted';
 }
 
 /**

@@ -98,6 +98,10 @@ describe('formatBatteryPercent boundaries', () => {
     expect(formatBatteryPercent(0)).toBe('0%');
     expect(formatBatteryPercent(1)).toBe('100%');
   });
+
+  it('shows a dash rather than a made-up level when the phone never reported one', () => {
+    expect(formatBatteryPercent(undefined)).toBe('—');
+  });
 });
 
 describe('formatAccuracy boundaries', () => {

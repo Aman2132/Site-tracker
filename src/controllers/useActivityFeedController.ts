@@ -6,6 +6,7 @@ import { SEED_EVENTS } from '@/constants/mockData';
 import { useEventStore } from '@/store/useEventStore';
 
 let eventsSubscriptionWired = false;
+let unsubscribeEvents: (() => void) | null = null;
 
 function wireEventsSubscriptionOnce(
   setEvents: (events: ReturnType<typeof useEventStore.getState>['events']) => void
@@ -16,7 +17,19 @@ function wireEventsSubscriptionOnce(
     setEvents(SEED_EVENTS);
     return;
   }
-  subscribeToEvents(setEvents);
+  unsubscribeEvents = subscribeToEvents(setEvents, error => {
+    // Ended by the server — let the next Activity screen mount re-subscribe.
+    console.warn('[events] live feed stopped —', error.message);
+    unsubscribeEvents = null;
+    eventsSubscriptionWired = false;
+  });
+}
+
+/** Closes the live feed before sign-out; see stopCrewSubscription. */
+export function stopEventsSubscription(): void {
+  unsubscribeEvents?.();
+  unsubscribeEvents = null;
+  eventsSubscriptionWired = false;
 }
 
 /** Owner Activity screen: arrivals, departures, low battery, uploads — live. */

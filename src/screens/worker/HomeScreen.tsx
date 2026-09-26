@@ -4,8 +4,8 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import InitialsAvatar from '@/components/common/InitialsAvatar';
 import ScreenContainer from '@/components/common/ScreenContainer';
-import SignOutButton from '@/components/common/SignOutButton';
 import StatRow from '@/components/common/StatRow';
 import PauseToggleRow from '@/components/worker/PauseToggleRow';
 import ShareStatusCard from '@/components/worker/ShareStatusCard';
@@ -24,7 +24,8 @@ function greeting(): string {
 export default function HomeScreen() {
   const { paused, togglePause } = useLocationSharingController();
   const { pendingCount } = usePhotoQueueController();
-  const name = useAuthStore(state => state.profile?.name) ?? '';
+  const profile = useAuthStore(state => state.profile);
+  const name = profile?.name ?? '';
   const insets = useSafeAreaInsets();
 
   return (
@@ -39,9 +40,19 @@ export default function HomeScreen() {
           <Text style={styles.eyebrow}>{greeting().toUpperCase()}</Text>
           <Text style={styles.greeting}>{name}</Text>
         </View>
-        <LinearGradient colors={gradients.sheen} style={styles.avatarWrap}>
-          <Ionicons name="construct" size={20} color={colors.white} />
-        </LinearGradient>
+        {profile ? (
+          <InitialsAvatar
+            name={profile.name}
+            color={profile.color}
+            imageUri={profile.avatar}
+            size={48}
+            ringed
+          />
+        ) : (
+          <LinearGradient colors={gradients.sheen} style={styles.avatarWrap}>
+            <Ionicons name="construct" size={20} color={colors.white} />
+          </LinearGradient>
+        )}
       </LinearGradient>
 
       <View style={styles.body}>
@@ -53,8 +64,6 @@ export default function HomeScreen() {
           icon="cloud-upload-outline"
           gradient={gradients.worker}
         />
-
-        <SignOutButton style={styles.signOutButton} />
       </View>
     </ScreenContainer>
   );
@@ -83,5 +92,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   body: { flex: 1, paddingHorizontal: spacing.lg, marginTop: -spacing.lg },
-  signOutButton: { marginTop: 'auto', marginBottom: spacing.xl, alignSelf: 'center' },
 });

@@ -1,8 +1,11 @@
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 
 import { GEOTAG_ACCURACY } from '@/constants/config';
+import { latestRecognizedActivity } from '@/services/activityRecognitionService';
+import { readBatteryLevel } from '@/services/batteryService';
 import {
-  classifyActivity,
+  setLocationUpdateHandler,
   startBackgroundTracking,
   stopBackgroundTracking,
   watchPreciseFix,
@@ -16,29 +19,63 @@ jest.mock('expo-location', () => ({
   stopLocationUpdatesAsync: jest.fn(async () => undefined),
   watchPositionAsync: jest.fn(),
 }));
+jest.mock('@/services/activityRecognitionService', () => ({ latestRecognizedActivity: jest.fn(() => null) }));
+jest.mock('@/services/batteryService', () => ({ readBatteryLevel: jest.fn(async () => undefined) }));
 
-describe('classifyActivity', () => {
-  it('treats a missing speed as still', () => {
-    expect(classifyActivity(null)).toBe('still');
-    expect(classifyActivity(undefined)).toBe('still');
+// Registered once at import, before any test clears the mocks.
+const locationTask = (TaskManager.defineTask as jest.Mock).mock.calls[0][1] as (body: {
+  data?: unknown;
+  error?: unknown;
+}) => Promise<void>;
+
+describe('background location task', () => {
+  const locations = (speed: number | null) => ({
+    locations: [{ coords: { latitude: 27.7, longitude: 85.3, accuracy: 12, speed } }],
   });
 
-  it('treats the sentinel negative speed some devices report as still', () => {
-    expect(classifyActivity(-1)).toBe('still');
+  afterEach(() => setLocationUpdateHandler(null));
+
+  it('reports the phone battery level with each fix', async () => {
+    (readBatteryLevel as jest.Mock).mockResolvedValueOnce(0.42);
+    const handler = jest.fn();
+    setLocationUpdateHandler(handler);
+
+    await locationTask({ data: locations(0) });
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ lat: 27.7, lng: 85.3, battery: 0.42 }));
   });
 
-  it('classifies by the configured thresholds', () => {
-    expect(classifyActivity(0)).toBe('still');
-    expect(classifyActivity(1)).toBe('walk');
-    expect(classifyActivity(10)).toBe('vehicle');
+  it('leaves battery out rather than guessing when the phone cannot say', async () => {
+    const handler = jest.fn();
+    setLocationUpdateHandler(handler);
+
+    await locationTask({ data: locations(0) });
+
+    expect(handler.mock.calls[0][0]).not.toHaveProperty('battery');
   });
 
-  it('treats each threshold as exclusive, so a boundary speed stays in the lower band', () => {
-    // Thresholds are `>`, not `>=` — 0.3 is still, 2.5 is walk.
-    expect(classifyActivity(0.3)).toBe('still');
-    expect(classifyActivity(0.31)).toBe('walk');
-    expect(classifyActivity(2.5)).toBe('walk');
-    expect(classifyActivity(2.51)).toBe('vehicle');
+  it('uses a fresh, confident OS activity reading over GPS speed', async () => {
+    // Crawling in traffic: GPS speed says walking, the recognizer knows it's a vehicle.
+    (latestRecognizedActivity as jest.Mock).mockReturnValueOnce({
+      kind: 'vehicle',
+      confidence: 90,
+      at: Date.now(),
+    });
+    const handler = jest.fn();
+    setLocationUpdateHandler(handler);
+
+    await locationTask({ data: locations(1.2) });
+
+    expect(handler.mock.calls[0][0].kind).toBe('vehicle');
+  });
+
+  it('falls back to GPS speed with no OS reading', async () => {
+    const handler = jest.fn();
+    setLocationUpdateHandler(handler);
+
+    await locationTask({ data: locations(1.2) });
+
+    expect(handler.mock.calls[0][0].kind).toBe('walk');
   });
 });
 

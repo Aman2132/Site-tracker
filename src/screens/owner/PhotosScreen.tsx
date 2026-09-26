@@ -24,7 +24,8 @@ export default function PhotosScreen() {
         <View style={styles.pendingBar}>
           <Ionicons name="time-outline" size={13} color={colors.warningText} />
           <Text style={styles.pendingText}>
-            {pendingCount} photo{pendingCount > 1 ? 's' : ''} waiting on a connection
+            {pendingCount} of your photo{pendingCount > 1 ? 's are' : ' is'} saved on this phone, not uploaded
+            yet
           </Text>
         </View>
       )}
@@ -35,7 +36,7 @@ export default function PhotosScreen() {
         contentContainerStyle={{ padding: 8 }}
         renderItem={({ item }) => <PhotoGridCell photo={item} />}
         ListEmptyComponent={
-          <EmptyState icon="images-outline" message="No photos yet. Take one from the worker Camera tab." />
+          <EmptyState icon="images-outline" message="No photos yet. Take one from the Camera tab." />
         }
       />
     </ScreenContainer>

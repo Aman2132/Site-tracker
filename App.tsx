@@ -10,6 +10,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import ErrorBoundary from '@/components/common/ErrorBoundary';
@@ -34,12 +35,16 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <RootNavigator />
-        </NavigationContainer>
-      </ErrorBoundary>
+      {/* Tracks the keyboard on both platforms, so forms can keep their
+          buttons above it — see KeyboardAwareScrollView in LoginScreen. */}
+      <KeyboardProvider>
+        <ErrorBoundary>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <RootNavigator />
+          </NavigationContainer>
+        </ErrorBoundary>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

@@ -58,8 +58,8 @@ section without the user explicitly saying so.
    An api/ function talks to the backend (mocked for now). A store holds
    state and nothing else. If a file is doing two of these, split it.
 3. **No inline magic values.** Colors, spacing, radii and type sizes come
-   from `src/constants/theme.ts`. Tunables (tracking intervals, geofence
-   bounds, mock latency) come from `src/constants/config.ts`. If a screen is
+   from `src/constants/theme.ts`. Tunables (tracking intervals, map camera,
+   mock latency) come from `src/constants/config.ts`. If a screen is
    about to hardcode a hex color or a `paddingTop: 54`, stop and check
    whether it already exists in `theme.ts`/`config.ts` first.
 
@@ -79,7 +79,7 @@ src/
                   Supabase Storage (Firebase Storage started requiring a
                   Blaze billing account for every project, even free-tier
                   usage, as of Feb 2026 — see README "Backend setup"). One
-                  file per resource (peopleApi, siteApi, photosApi,
+                  file per resource (peopleApi, photosApi,
                   eventsApi) plus firebaseClient.ts and supabaseClient.ts
                   (the shared SDK instances resource files import). Static/
                   rarely-changing data lives in Firestore; live crew
@@ -90,8 +90,15 @@ src/
                   what's behind them.
   services/       Device/OS + backend-SDK integration with no app state:
                   expo-location wrapper, offline EXIF writer,
-                  mediaLibraryService.ts (saves a capture to the device
-                  gallery), permission requests, AsyncStorage read/write,
+                  mediaLibraryService.ts (saves a capture to the "Site
+                  Tracker" gallery album, and lists it to rebuild the Photos
+                  list after a reinstall), localMediaService.ts (moves a
+                  capture out of the cache into permanent app storage),
+                  photoQueueStorage.ts (each person's saved captures, one
+                  AsyncStorage key per person), batteryService.ts
+                  (expo-battery), avatarService.ts (picks + shrinks a
+                  profile photo), activityRecognitionService.ts (wraps the
+                  local native module below), permission requests, AsyncStorage read/write,
                   authService.ts (Firebase Auth wrapper), pushService.ts
                   (expo-notifications). Pure, mockable, no React.
   controllers/    React hooks that orchestrate: call a service and/or an
@@ -100,7 +107,7 @@ src/
                   what comes back — they never call services or api/
                   directly. Name them `use<Thing>Controller`.
   store/          Zustand stores, one domain per file (useAuthStore,
-                  useCrewStore, useSiteStore, usePhotoStore, useEventStore).
+                  useCrewStore, usePhotoStore, useEventStore).
                   A store holds state and simple setters only — no fetching,
                   no side effects. Side effects belong in controllers/.
   navigation/      RootNavigator (gated on real auth state — signed out
@@ -119,6 +126,9 @@ src/
   utils/          Pure functions with no side effects (formatters.ts,
                   geo.ts). If it doesn't touch React, the network, or the
                   device, it goes here, not in a component.
+modules/          Local Expo native modules, autolinked from here.
+                  activity-recognition/ is Android-only Kotlin (Play Services
+                  activity recognition) — changing it needs a native rebuild.
 scripts/          One-off Node admin scripts (Firebase seeding via
                   firebase-admin). Has its own package.json — never imported
                   by the RN app, never part of the bundle.

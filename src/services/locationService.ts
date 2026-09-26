@@ -1,13 +1,11 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import {
-  ACTIVITY_THRESHOLDS,
-  GEOTAG_ACCURACY,
-  LOCATION_TASK_NAME,
-  LOCATION_TRACKING,
-} from '@/constants/config';
-import { ActivityKind, GeoFix, TrackedFix } from '@/types/domain';
+import { GEOTAG_ACCURACY, LOCATION_TASK_NAME, LOCATION_TRACKING } from '@/constants/config';
+import { latestRecognizedActivity } from '@/services/activityRecognitionService';
+import { readBatteryLevel } from '@/services/batteryService';
+import { GeoFix, TrackedFix } from '@/types/domain';
+import { resolveActivity } from '@/utils/activity';
 
 /**
  * Wraps expo-location + expo-task-manager. Registers one background task at
@@ -27,14 +25,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) return;
   const locations = (data as { locations?: Location.LocationObject[] } | undefined)?.locations;
   const fix = locations?.[0];
-  if (fix && onUpdate) {
-    onUpdate({
-      lat: fix.coords.latitude,
-      lng: fix.coords.longitude,
-      accuracy: fix.coords.accuracy ?? 9999,
-      kind: classifyActivity(fix.coords.speed),
-    });
-  }
+  const handler = onUpdate;
+  if (!fix || !handler) return;
+  const battery = await readBatteryLevel();
+  handler({
+    lat: fix.coords.latitude,
+    lng: fix.coords.longitude,
+    accuracy: fix.coords.accuracy ?? 9999,
+    kind: resolveActivity(latestRecognizedActivity(), fix.coords.speed, Date.now()),
+    ...(battery != null ? { battery } : {}),
+  });
 });
 
 export async function startBackgroundTracking(): Promise<void> {
@@ -56,6 +56,25 @@ export async function startBackgroundTracking(): Promise<void> {
 export async function stopBackgroundTracking(): Promise<void> {
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME).catch(() => false);
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+}
+
+/**
+ * One reading of where this phone is now, for the owner map's "my location"
+ * button. Falls back to the last known position if a fresh fix doesn't come
+ * quickly (indoors); null if there's neither.
+ */
+export async function getCurrentPosition(): Promise<GeoFix | null> {
+  const toFix = (loc: Location.LocationObject): GeoFix => ({
+    lat: loc.coords.latitude,
+    lng: loc.coords.longitude,
+    accuracy: loc.coords.accuracy ?? 9999,
+  });
+  const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(
+    () => null
+  );
+  if (fresh) return toFix(fresh);
+  const last = await Location.getLastKnownPositionAsync().catch(() => null);
+  return last ? toFix(last) : null;
 }
 
 /**
@@ -140,15 +159,4 @@ export function watchPreciseFix(onUpdate: (fix: GeoFix) => void): () => void {
     if (watchdogTimer) clearTimeout(watchdogTimer);
     stopSubscription();
   };
-}
-
-/**
- * Rough activity classification from recent speed. A production build should
- * feed this from expo-sensors / Android ActivityRecognition instead.
- */
-export function classifyActivity(speedMetersPerSecond: number | null | undefined): ActivityKind {
-  if (speedMetersPerSecond == null) return 'still';
-  if (speedMetersPerSecond > ACTIVITY_THRESHOLDS.vehicleSpeedMps) return 'vehicle';
-  if (speedMetersPerSecond > ACTIVITY_THRESHOLDS.walkSpeedMps) return 'walk';
-  return 'still';
 }

@@ -1,19 +1,5 @@
-import { AppEvent, Person, Photo, Site } from '@/types/domain';
+import { AppEvent, Person, Photo } from '@/types/domain';
 import { plusCodeFor } from '@/utils/geo';
-
-/**
- * Demo dataset — no longer read by the app itself (src/api/* now talks to
- * Firebase directly). Kept as the source data for scripts/seedFirebase.js,
- * which provisions matching Firebase Auth accounts + Firestore records so a
- * fresh project starts with a working, realistic roster.
- */
-
-export const SEED_SITE: Site = {
-  name: 'Sector 62 · Tower B',
-  lat: 28.6139,
-  lng: 77.209,
-  radius: 150,
-};
 
 export const SEED_PEOPLE: Person[] = [
   {

@@ -21,7 +21,7 @@ src/services/             Device integration + auth/push: location, camera EXIF,
 src/controllers/          Hooks wiring api/services -> store (business logic)
 src/store/                Zustand stores (state only)
 src/navigation/            RootNavigator (auth-gated) + owner/worker tab navigators
-src/screens/owner/         Map, Crew, Photos, Sites, Activity
+src/screens/owner/         Map, Crew, Photos, Activity
 src/screens/worker/        Home, Camera, MyPhotos
 src/screens/common/        LoginScreen
 src/components/            Presentational pieces, grouped by common/owner/worker
@@ -60,7 +60,7 @@ npm test            # jest
 
 ## Backend setup (Firebase + Supabase)
 
-Identity, roster, sites, photo metadata, events, and live positions are all Firebase.
+Identity, roster, photo metadata, events, and live positions are all Firebase.
 Photo **files** live in Supabase Storage instead of Firebase Storage — Firebase Storage
 started requiring a billing account (Blaze) for every project, even at free-tier usage,
 as of Feb 2026, while Supabase's free tier (1 GB) needs no card. Everything else stays
@@ -92,7 +92,7 @@ on Firebase, still free with no card required.
    ```
    This creates one owner + 5 seed workers (from `src/constants/mockData.ts`) as real
    Firebase Auth accounts, prints their generated passwords once, and writes their
-   `people/{uid}` profile docs plus `sites/default`. Keep the service account key out of
+   `people/{uid}` profile docs. Keep the service account key out of
    git — it's a permanent admin credential, already covered by `.gitignore`.
 
 ### Supabase (photo storage only)
@@ -162,17 +162,17 @@ What it does:
   Cloud Functions require Firebase's Blaze (pay-as-you-go) plan; usage at this scale stays
   within the free quota, but Blaze still needs a card on file, so it wasn't wired up without
   asking first.
-- **Employee self-management is partial.** Workers can create their own account from
-  LoginScreen ("Create one") — no seed script needed to add a worker. Removing/deactivating a
-  worker or changing anyone's role still means editing Firestore by hand; there's no owner-side
-  roster management screen. Owner accounts are still seed-script-only by design (see
-  "Security notes" below).
-- **Activity classification** (`services/locationService.ts:classifyActivity`) is a speed
-  threshold — reasonable, but a real "walking vs vehicle" signal would use Android's
-  ActivityRecognition API or a motion library.
-- **Battery level isn't read from the device.** `Person.battery` is only ever updated to
-  its default (100%) since nothing calls a battery API yet — wiring up `expo-battery` would
-  close this.
+- **Deactivating a worker doesn't delete them, and takes effect on their next app open.**
+  The owner Crew screen edits job title, worker/owner access, and deactivates/reactivates
+  (`people/{uid}.active`). Deleting a Firebase Auth account needs the Admin SDK, so a
+  deactivated person's login still exists — the app signs them straight back out, and
+  `firestore.rules` rejects their writes. A worker who is already signed in keeps running
+  until they next open the app, and Realtime Database `positions/` rules can't see the
+  Firestore flag, so their position writes aren't blocked server-side.
+- **Activity recognition is Android-only.** Walking/driving comes from Android's activity
+  recognition (local native module in `modules/activity-recognition`) when it has a fresh,
+  confident reading, else from GPS speed (`utils/activity.ts`). iOS, or a worker who refuses
+  the "Physical activity" permission, gets the speed fallback.
 - **The Supabase `Photos` bucket has no per-user write restriction.** Firestore and
   Realtime Database enforce "a worker can only write their own data" via security rules
   keyed off Firebase Auth's `request.auth.uid`; Supabase's row-level security keys off

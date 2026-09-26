@@ -29,7 +29,7 @@ const profileDoc = {
 /** Drives one subscribeToCrew cycle and returns the merged crew it emitted. */
 function emitCrew(positions: Record<string, unknown>): Person[] {
   const onChange = jest.fn();
-  subscribeToCrew(onChange);
+  subscribeToCrew(onChange, jest.fn());
 
   const profilesCb = (onSnapshot as jest.Mock).mock.calls[0][1];
   const positionsCb = (onValue as jest.Mock).mock.calls[0][1];
@@ -95,7 +95,26 @@ describe('subscribeToCrew staleness', () => {
 
     expect(person.kind).toBe('still');
     expect(person.accuracy).toBe(9999);
-    expect(person.battery).toBe(1);
+    // Unknown, not a made-up 100%: the owner sees a dash until the phone reports.
+    expect(person.battery).toBeUndefined();
+  });
+
+  it('tears down both listeners and reports it when the server ends one', () => {
+    // Firestore ends a listener for good on permission-denied (e.g. signed out
+    // underneath it); the caller has to know so it can subscribe again later.
+    const unsubProfiles = jest.fn();
+    const unsubPositions = jest.fn();
+    (onSnapshot as jest.Mock).mockReturnValue(unsubProfiles);
+    (onValue as jest.Mock).mockReturnValue(unsubPositions);
+    const onError = jest.fn();
+
+    subscribeToCrew(jest.fn(), onError);
+    const profilesErrorCb = (onSnapshot as jest.Mock).mock.calls[0][2];
+    profilesErrorCb(new Error('permission-denied'));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'permission-denied' }));
+    expect(unsubProfiles).toHaveBeenCalled();
+    expect(unsubPositions).toHaveBeenCalled();
   });
 
   it('tears down both subscriptions on unsubscribe', () => {
@@ -104,7 +123,7 @@ describe('subscribeToCrew staleness', () => {
     (onSnapshot as jest.Mock).mockReturnValue(unsubProfiles);
     (onValue as jest.Mock).mockReturnValue(unsubPositions);
 
-    subscribeToCrew(jest.fn())();
+    subscribeToCrew(jest.fn(), jest.fn())();
 
     expect(unsubProfiles).toHaveBeenCalledTimes(1);
     expect(unsubPositions).toHaveBeenCalledTimes(1);
@@ -129,6 +148,20 @@ describe('position writes', () => {
 
     const [, payload] = (update as jest.Mock).mock.calls[0];
     expect(payload.lastFixAt).toEqual({ '.sv': 'timestamp' });
+  });
+
+  it('writes the battery level when the phone reported one', async () => {
+    await reportPosition('worker-1', { lat: 27.7, lng: 85.3, accuracy: 6, kind: 'walk', battery: 0.42 });
+
+    const [, payload] = (update as jest.Mock).mock.calls[0];
+    expect(payload.battery).toBe(0.42);
+  });
+
+  it('leaves the stored battery alone when the phone could not read it', async () => {
+    await reportPosition('worker-1', { lat: 27.7, lng: 85.3, accuracy: 6, kind: 'walk' });
+
+    const [, payload] = (update as jest.Mock).mock.calls[0];
+    expect(payload).not.toHaveProperty('battery');
   });
 
   it('writes a pause flag without waiting for the next GPS fix', async () => {

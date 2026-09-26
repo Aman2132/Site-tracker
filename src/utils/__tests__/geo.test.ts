@@ -2,7 +2,7 @@ import {
   appendTrailPoint,
   bearingDegrees,
   distanceMeters,
-  isWithinRadius,
+  crewCenter,
   nextTrails,
   offsetMeters,
   plusCodeFor,
@@ -21,33 +21,30 @@ describe('distanceMeters', () => {
   });
 });
 
-describe('isWithinRadius', () => {
-  const center = { lat: 28.6139, lng: 77.209 };
+describe('crewCenter', () => {
+  const fallback = { lat: 27.7172, lng: 85.324 };
 
-  it('is true for a point well inside the radius', () => {
-    expect(isWithinRadius({ lat: 28.614, lng: 77.209 }, center, 150)).toBe(true);
+  it('is the middle of everyone with a position', () => {
+    const people = [
+      { lat: 10, lng: 20, lastFixAt: 1 },
+      { lat: 20, lng: 40, lastFixAt: 1 },
+    ];
+    expect(crewCenter(people, fallback)).toEqual({ lat: 15, lng: 30 });
   });
 
-  it('is false for a point well outside the radius', () => {
-    expect(isWithinRadius({ lat: 28.63, lng: 77.209 }, center, 150)).toBe(false);
+  it('ignores people who have never reported a position', () => {
+    // Never-reported people sit at 0,0 with lastFixAt 0 — averaging them in
+    // would drag the map into the ocean off West Africa.
+    const people = [
+      { lat: 10, lng: 20, lastFixAt: 1 },
+      { lat: 0, lng: 0, lastFixAt: 0 },
+    ];
+    expect(crewCenter(people, fallback)).toEqual({ lat: 10, lng: 20 });
   });
 
-  it('counts the center itself as inside any positive radius', () => {
-    expect(isWithinRadius(center, center, 1)).toBe(true);
-  });
-
-  it('separates points a metre either side of the fence line', () => {
-    // A metre is well inside GPS noise, which is the whole reason
-    // driftSafeRadiusMeters exists — the maths itself is this sharp.
-    const justInside = { lat: center.lat + 149 / 111_320, lng: center.lng };
-    const justOutside = { lat: center.lat + 151 / 111_320, lng: center.lng };
-
-    expect(isWithinRadius(justInside, center, 150)).toBe(true);
-    expect(isWithinRadius(justOutside, center, 150)).toBe(false);
-  });
-
-  it('treats a zero radius as enclosing nothing', () => {
-    expect(isWithinRadius(center, center, 0)).toBe(false);
+  it('falls back when nobody has a position yet', () => {
+    expect(crewCenter([], fallback)).toEqual(fallback);
+    expect(crewCenter([{ lat: 0, lng: 0, lastFixAt: 0 }], fallback)).toEqual(fallback);
   });
 });
 

@@ -1,9 +1,16 @@
 import { onValue, ref, serverTimestamp, update } from 'firebase/database';
-import { collection, doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 
 import { firestore, rtdb } from './firebaseClient';
 
-import { ActivityKind, Person, PersonProfile, TrackedFix } from '@/types/domain';
+import {
+  ActivityKind,
+  OwnProfileChanges,
+  Person,
+  PersonProfile,
+  PersonProfileChanges,
+  TrackedFix,
+} from '@/types/domain';
 
 /**
  * Crew roster (Firestore `people/{uid}`, static: name/role/color/appRole)
@@ -35,7 +42,7 @@ function mergePersonProfile(profile: PersonProfile, live: LivePosition | undefin
     lng: live?.lng ?? 0,
     accuracy: live?.accuracy ?? 9999,
     lastFixAt,
-    battery: live?.battery ?? 1,
+    battery: live?.battery,
     paused: live?.paused ?? false,
     kind: isStale ? 'stale' : (live?.kind ?? 'still'),
   };
@@ -73,30 +80,69 @@ export async function createPersonProfile(uid: string, name: string): Promise<vo
 }
 
 /**
+ * Someone editing their own name and photo from the Profile tab.
+ * firestore.rules allows a person to change exactly these two fields on
+ * their own profile, and nothing else.
+ */
+export async function updateOwnProfile(uid: string, changes: OwnProfileChanges): Promise<void> {
+  await updateDoc(doc(firestore, 'people', uid), changes);
+}
+
+/**
+ * Owner-only edit of someone's job title, app role or active flag.
+ * firestore.rules allows exactly these fields, only for an owner, and never
+ * an owner's own appRole/active — so an owner can't lock themselves out.
+ */
+export async function updatePersonProfile(uid: string, changes: PersonProfileChanges): Promise<void> {
+  await updateDoc(doc(firestore, 'people', uid), changes);
+}
+
+/**
  * Live crew feed for the owner's Map/Crew screens. Subscribes to the
  * roster once and to positions continuously, re-merging on every change.
- * Call the returned function to unsubscribe (e.g. on screen unmount).
+ * Call the returned function to unsubscribe (e.g. on sign-out). `onError`
+ * fires if either listener is ended by the server (e.g. permission denied);
+ * both are torn down then, and the caller must re-subscribe.
  */
-export function subscribeToCrew(onChange: (people: Person[]) => void): () => void {
+export function subscribeToCrew(
+  onChange: (people: Person[]) => void,
+  onError: (error: Error) => void
+): () => void {
   let profiles: PersonProfile[] = [];
   let positions: Record<string, LivePosition> = {};
 
   const emit = () => onChange(profiles.map(profile => mergePersonProfile(profile, positions[profile.id])));
 
-  const unsubProfiles = onSnapshot(collection(firestore, 'people'), snapshot => {
-    profiles = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<PersonProfile, 'id'>) }));
-    emit();
-  });
-
-  const unsubPositions = onValue(ref(rtdb, 'positions'), snapshot => {
-    positions = (snapshot.val() as Record<string, LivePosition>) ?? {};
-    emit();
-  });
-
-  return () => {
+  let unsubProfiles = () => {};
+  let unsubPositions = () => {};
+  const unsubscribe = () => {
     unsubProfiles();
     unsubPositions();
   };
+  const fail = (error: Error) => {
+    unsubscribe();
+    onError(error);
+  };
+
+  unsubProfiles = onSnapshot(
+    collection(firestore, 'people'),
+    snapshot => {
+      profiles = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<PersonProfile, 'id'>) }));
+      emit();
+    },
+    fail
+  );
+
+  unsubPositions = onValue(
+    ref(rtdb, 'positions'),
+    snapshot => {
+      positions = (snapshot.val() as Record<string, LivePosition>) ?? {};
+      emit();
+    },
+    fail
+  );
+
+  return unsubscribe;
 }
 
 /** Reports the signed-in worker's own position. Fire-and-forget from the caller's side. */
@@ -106,6 +152,8 @@ export async function reportPosition(personId: string, fix: TrackedFix): Promise
     lng: fix.lng,
     accuracy: fix.accuracy,
     kind: fix.kind,
+    // Left as-is when unknown, rather than overwritten with a guess.
+    ...(fix.battery != null ? { battery: fix.battery } : {}),
     lastFixAt: serverTimestamp(),
   });
 }

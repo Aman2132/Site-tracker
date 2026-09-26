@@ -24,8 +24,21 @@ export function distanceMeters(a: GeoPoint, b: GeoPoint): number {
   return Math.hypot(dLat, dLng);
 }
 
-export function isWithinRadius(point: GeoPoint, center: GeoPoint, radiusMeters: number): boolean {
-  return distanceMeters(point, center) < radiusMeters;
+/** Someone the map can place: they've reported a real position at least once. */
+function hasPosition(point: GeoPoint & { lastFixAt?: number }): boolean {
+  return (point.lastFixAt ?? 1) > 0 && !(point.lat === 0 && point.lng === 0);
+}
+
+/**
+ * Where the owner map should look: the middle of everyone who has a
+ * position, or `fallback` when nobody has reported one yet.
+ */
+export function crewCenter(people: (GeoPoint & { lastFixAt?: number })[], fallback: GeoPoint): GeoPoint {
+  const placed = people.filter(hasPosition);
+  if (placed.length === 0) return fallback;
+  const lat = placed.reduce((sum, p) => sum + p.lat, 0) / placed.length;
+  const lng = placed.reduce((sum, p) => sum + p.lng, 0) / placed.length;
+  return { lat, lng };
 }
 
 /**

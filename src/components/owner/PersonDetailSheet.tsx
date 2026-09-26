@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import InitialsAvatar from '@/components/common/InitialsAvatar';
+import { BATTERY } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/constants/theme';
 import { ActivityKind, Person } from '@/types/domain';
 import { formatAccuracy, formatBatteryPercent, timeAgo } from '@/utils/formatters';
@@ -28,6 +29,8 @@ const ACTIVITY_ICON: Record<ActivityKind, IconName> = {
 interface PersonDetailSheetProps {
   person: Person;
   onClose: () => void;
+  /** Extra section under the details — the Crew screen puts the owner's edit controls here. */
+  children?: ReactNode;
 }
 
 /**
@@ -35,12 +38,18 @@ interface PersonDetailSheetProps {
  * and an explicit stale/paused banner rather than presenting a last-known
  * point as if it were live.
  */
-export default function PersonDetailSheet({ person, onClose }: PersonDetailSheetProps) {
+export default function PersonDetailSheet({ person, onClose, children }: PersonDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const isStale = person.kind === 'stale' || person.paused;
   const fixAgeMs = Date.now() - person.lastFixAt;
   const batteryIcon: IconName =
-    person.battery < 0.2 ? 'battery-dead' : person.battery < 0.6 ? 'battery-half' : 'battery-full';
+    person.battery == null
+      ? 'battery-full-outline'
+      : person.battery < BATTERY.lowLevel
+        ? 'battery-dead'
+        : person.battery < 0.6
+          ? 'battery-half'
+          : 'battery-full';
 
   return (
     <View style={[styles.sheet, shadow.xl, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -52,12 +61,26 @@ export default function PersonDetailSheet({ person, onClose }: PersonDetailSheet
       </TouchableOpacity>
 
       <View style={styles.headRow}>
-        <InitialsAvatar name={person.name} color={person.color} size={50} faded={isStale} ringed />
+        <InitialsAvatar
+          name={person.name}
+          color={person.color}
+          imageUri={person.avatar}
+          size={50}
+          faded={isStale}
+          ringed
+        />
         <View style={styles.headText}>
           <Text style={styles.name}>{person.name}</Text>
           <Text style={styles.role}>{person.role}</Text>
         </View>
       </View>
+
+      {person.active === false && (
+        <View style={[styles.banner, styles.bannerInactive]}>
+          <Ionicons name="person-remove" size={14} color={colors.dangerText} />
+          <Text style={[styles.bannerText, styles.bannerTextInactive]}>Deactivated · can't sign in</Text>
+        </View>
+      )}
 
       {isStale && (
         <View style={styles.banner}>
@@ -79,6 +102,8 @@ export default function PersonDetailSheet({ person, onClose }: PersonDetailSheet
           {person.lat.toFixed(6)}, {person.lng.toFixed(6)}
         </Text>
       </View>
+
+      {children}
     </View>
   );
 }
@@ -146,6 +171,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   bannerText: { fontFamily: fontFamily.medium, color: colors.warningText, fontSize: 12 },
+  bannerInactive: { backgroundColor: colors.dangerBg },
+  bannerTextInactive: { color: colors.dangerText },
   grid: {
     backgroundColor: colors.background,
     borderRadius: radius.md,

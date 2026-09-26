@@ -77,6 +77,17 @@ const config: ExpoConfig = {
       { androidGoogleMapsApiKey: googleMapsApiKey, iosGoogleMapsApiKey: googleMapsApiKey },
     ],
     [
+      'expo-image-picker',
+      {
+        // Profile photo only: picked from the gallery (Android 13+ uses the
+        // system photo picker, which needs no permission). Don't set
+        // cameraPermission/microphonePermission to false here: that makes this
+        // plugin strip CAMERA and RECORD_AUDIO from the whole app, which
+        // silently breaks the app's own camera and video sound.
+        photosPermission: 'Site Tracker uses your photos to set your profile picture.',
+      },
+    ],
+    [
       'expo-sensors',
       {
         // Compass + tilt drive the map camera. Android needs no prompt for these;
