@@ -63,7 +63,10 @@ export function usePhotoQueueController() {
 
       // Without a Firebase project, demo photos stand in for the backend on an empty phone.
       const remote = HAS_FIREBASE_CONFIG
-        ? await fetchPhotos(isOwner ? undefined : personId).catch(() => [])
+        ? await fetchPhotos(isOwner ? undefined : personId).catch(error => {
+            console.warn('[photos] fetch failed —', error);
+            return [];
+          })
         : local.length === 0
           ? SEED_PHOTOS
           : [];
@@ -92,11 +95,12 @@ export function usePhotoQueueController() {
         logEvent(
           `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`,
           'info'
-        ).catch(() => {});
+        ).catch(error => console.warn('[photos] activity log failed —', error));
       }
-    } catch {
+    } catch (error) {
       // The queue is left untouched, so the photos are still safe on disk and
       // the worker can retry — but they need to know it didn't go through.
+      console.warn('[photos] sync failed —', error);
       setSyncError('Upload failed — photos are still saved. Check your connection and tap Sync again.');
     } finally {
       setSyncing(false);

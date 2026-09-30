@@ -27,18 +27,24 @@ const KINDS: RecognizedActivity['kind'][] = ['vehicle', 'walk', 'still'];
 /** Asks for the "Physical activity" permission. False when unavailable or refused. */
 export async function requestActivityRecognitionPermission(): Promise<boolean> {
   if (!native) return false;
-  const result = await native.requestPermissionsAsync().catch(() => null);
+  const result = await native.requestPermissionsAsync().catch(error => {
+    console.warn('[activity] permission request failed —', error);
+    return null;
+  });
   return result?.granted ?? false;
 }
 
 /** Starts periodic readings. Resolves false without permission or native support. */
 export async function startActivityRecognition(intervalMs: number): Promise<boolean> {
   if (!native) return false;
-  return native.startAsync(intervalMs).catch(() => false);
+  return native.startAsync(intervalMs).catch(error => {
+    console.warn('[activity] start failed —', error);
+    return false;
+  });
 }
 
 export async function stopActivityRecognition(): Promise<void> {
-  await native?.stopAsync().catch(() => {});
+  await native?.stopAsync().catch(error => console.warn('[activity] stop failed —', error));
 }
 
 /** The most recent reading, or null if there's none (yet). */

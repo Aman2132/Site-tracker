@@ -162,7 +162,9 @@ export function usePhotoCaptureController() {
   useEffect(
     () => () => {
       stopRecordingTimer();
-      recordingRef.current?.camera.stopRecording().catch(() => {});
+      recordingRef.current?.camera
+        .stopRecording()
+        .catch(e => console.warn(`${TAG} stopRecording (unmount) failed —`, errText(e)));
     },
     [stopRecordingTimer]
   );
@@ -271,7 +273,11 @@ export function usePhotoCaptureController() {
         const elapsed = Date.now() - startedAt;
         setRecordingMs(elapsed);
         // Clips are uploaded through JS memory, so they are capped at a length that fits.
-        if (elapsed >= CAMERA.maxVideoSeconds * 1000) camera.stopRecording().catch(() => {});
+        if (elapsed >= CAMERA.maxVideoSeconds * 1000) {
+          camera
+            .stopRecording()
+            .catch(e => console.warn(`${TAG} stopRecording (max length) failed —`, errText(e)));
+        }
       }, 250);
 
       camera.startRecording({
@@ -293,7 +299,9 @@ export function usePhotoCaptureController() {
   );
 
   const stopVideo = useCallback(() => {
-    recordingRef.current?.camera.stopRecording().catch(() => {});
+    recordingRef.current?.camera
+      .stopRecording()
+      .catch(e => console.warn(`${TAG} stopRecording failed —`, errText(e)));
   }, []);
 
   const clearLastSavedLabel = useCallback(() => setLastSavedLabel(null), []);

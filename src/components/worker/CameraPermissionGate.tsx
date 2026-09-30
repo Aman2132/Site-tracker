@@ -37,7 +37,10 @@ export default function CameraPermissionGate({
 
   const ask = async () => {
     setAsking(true);
-    const granted = await requestPermission().catch(() => false);
+    const granted = await requestPermission().catch(error => {
+      console.warn('[camera] permission request failed —', error);
+      return false;
+    });
     setAsking(false);
     setRefused(!granted);
   };

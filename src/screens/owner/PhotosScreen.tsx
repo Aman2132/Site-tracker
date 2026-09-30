@@ -24,8 +24,8 @@ export default function PhotosScreen() {
         <View style={styles.pendingBar}>
           <Ionicons name="time-outline" size={13} color={colors.warningText} />
           <Text style={styles.pendingText}>
-            {pendingCount} of your photo{pendingCount > 1 ? 's are' : ' is'} saved on this phone, not uploaded
-            yet
+            {pendingCount} photo{pendingCount > 1 ? 's' : ''} of yours {pendingCount > 1 ? 'are' : 'is'} saved
+            on this phone, not uploaded yet
           </Text>
         </View>
       )}

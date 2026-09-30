@@ -29,6 +29,14 @@ async function stopSharing(): Promise<void> {
   await stopActivityRecognition();
 }
 
+/** Fire-and-forget start/stop, logged rather than left as an unhandled rejection. */
+function startSharingLogged(): void {
+  startSharing().catch(error => console.warn('[sharing] failed to start —', error));
+}
+function stopSharingLogged(): void {
+  stopSharing().catch(error => console.warn('[sharing] failed to stop —', error));
+}
+
 /**
  * Worker Home screen: requests permission, starts/stops the background
  * tracking task (plus Android activity recognition, which sharpens the
@@ -49,7 +57,7 @@ export function useLocationSharingController() {
     if (!workerId) return;
     setLocationUpdateHandler(fix => {
       updatePersonPosition(workerId, fix);
-      reportPosition(workerId, fix).catch(() => {});
+      reportPosition(workerId, fix).catch(error => console.warn('[sharing] position report failed —', error));
 
       if (fix.battery == null) return;
       const isLow = fix.battery <= BATTERY.lowLevel;
@@ -57,7 +65,7 @@ export function useLocationSharingController() {
         logEvent(
           `${workerName ?? 'A worker'}'s phone battery is low (${Math.round(fix.battery * 100)}%)`,
           'warn'
-        ).catch(() => {});
+        ).catch(error => console.warn('[sharing] low-battery event failed —', error));
       }
       batteryLowRef.current = isLow;
     });
@@ -66,25 +74,37 @@ export function useLocationSharingController() {
 
   useEffect(() => {
     (async () => {
-      const result = await requestLocationPermissions();
-      setPermission(result);
-      if (!result.granted) return;
-      // Optional: refused just means walking/driving comes from GPS speed alone.
-      await requestActivityRecognitionPermission();
-      await startSharing();
+      try {
+        const result = await requestLocationPermissions();
+        setPermission(result);
+        if (!result.granted) return;
+        // Optional: refused just means walking/driving comes from GPS speed alone.
+        await requestActivityRecognitionPermission();
+        await startSharing();
+      } catch (error) {
+        console.warn('[sharing] failed to start on mount —', error);
+      }
     })();
   }, []);
 
   const togglePause = useCallback(() => {
     setPaused(wasPaused => {
       const nextPaused = !wasPaused;
-      if (workerId) reportPauseState(workerId, nextPaused).catch(() => {});
+      if (workerId) {
+        reportPauseState(workerId, nextPaused).catch(error =>
+          console.warn('[sharing] pause-state report failed —', error)
+        );
+      }
       if (nextPaused) {
-        stopSharing();
-        logEvent(`${workerName ?? 'A worker'} paused sharing`, 'warn').catch(() => {});
+        stopSharingLogged();
+        logEvent(`${workerName ?? 'A worker'} paused sharing`, 'warn').catch(error =>
+          console.warn('[sharing] activity log failed —', error)
+        );
       } else {
-        startSharing();
-        logEvent(`${workerName ?? 'A worker'} resumed sharing`, 'info').catch(() => {});
+        startSharingLogged();
+        logEvent(`${workerName ?? 'A worker'} resumed sharing`, 'info').catch(error =>
+          console.warn('[sharing] activity log failed —', error)
+        );
       }
       return nextPaused;
     });

@@ -5,6 +5,9 @@ import * as Battery from 'expo-battery';
  * (emulators and some devices report -1). Never rejects.
  */
 export async function readBatteryLevel(): Promise<number | undefined> {
-  const level = await Battery.getBatteryLevelAsync().catch(() => -1);
+  const level = await Battery.getBatteryLevelAsync().catch(error => {
+    console.warn('[battery] read failed —', error);
+    return -1;
+  });
   return level >= 0 ? level : undefined;
 }

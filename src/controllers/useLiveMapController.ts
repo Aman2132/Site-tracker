@@ -94,6 +94,9 @@ export function useLiveMapController() {
         zoom: LIVE_MAP.zoomMyLocation,
         durationMs: LIVE_MAP.cameraAnimationMs,
       });
+    } catch (error) {
+      console.warn('[map] my-location failed —', error);
+      setNotice("Couldn't find your location. Check that Location is on.");
     } finally {
       setLocating(false);
     }

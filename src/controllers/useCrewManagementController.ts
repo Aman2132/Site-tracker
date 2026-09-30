@@ -49,8 +49,11 @@ export function useCrewManagementController() {
       setSaving(true);
       try {
         await updatePersonProfile(person.id, changes);
-        logEvent(`${myName ?? 'The owner'} ${auditText}`, 'info').catch(() => {});
-      } catch {
+        logEvent(`${myName ?? 'The owner'} ${auditText}`, 'info').catch(error =>
+          console.warn('[crew] activity log failed —', error)
+        );
+      } catch (error) {
+        console.warn('[crew] profile update failed —', error);
         setError("Couldn't save that change. Check your connection and try again.");
       } finally {
         setSaving(false);

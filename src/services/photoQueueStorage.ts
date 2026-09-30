@@ -27,7 +27,9 @@ async function readList(key: string): Promise<Photo[]> {
 }
 
 async function writeList(personId: string, photos: Photo[]): Promise<void> {
-  await AsyncStorage.setItem(keyFor(personId), JSON.stringify(photos)).catch(() => {});
+  await AsyncStorage.setItem(keyFor(personId), JSON.stringify(photos)).catch(error =>
+    console.warn('[storage] write failed —', error)
+  );
 }
 
 /**
@@ -38,6 +40,10 @@ async function writeList(personId: string, photos: Photo[]): Promise<void> {
 let pending: Promise<unknown> = Promise.resolve();
 function serialized<T>(work: () => Promise<T>): Promise<T> {
   const next = pending.then(work, work);
+  // Not a swallowed error: `next` (returned below) still carries the
+  // rejection to this call's own caller. This second, discarded branch only
+  // keeps `pending` itself from staying rejected forever, which would
+  // otherwise jam every future call through this queue.
   pending = next.catch(() => {});
   return next;
 }

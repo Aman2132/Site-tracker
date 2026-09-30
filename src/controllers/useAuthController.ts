@@ -38,17 +38,18 @@ async function admit(uid: string): Promise<Admission> {
   let profile: PersonProfile | null;
   try {
     profile = await fetchPersonProfile(uid);
-  } catch {
+  } catch (error) {
+    console.warn('[auth] profile load failed —', error);
     return { reason: PROFILE_LOAD_FAILED_MESSAGE };
   }
   if (!profile) {
-    await signOutUser().catch(() => {});
+    await signOutUser().catch(error => console.warn('[auth] sign-out (no profile) failed —', error));
     return { reason: NO_PROFILE_MESSAGE };
   }
   // Deactivated by an owner: the Firebase account still exists (deleting it
   // needs the Admin SDK), so the app itself refuses to let them in.
   if (profile.active === false) {
-    await signOutUser().catch(() => {});
+    await signOutUser().catch(error => console.warn('[auth] sign-out (deactivated) failed —', error));
     return { reason: DEACTIVATED_MESSAGE };
   }
   return { profile };
@@ -57,7 +58,7 @@ async function admit(uid: string): Promise<Admission> {
 function registerPush(uid: string): void {
   registerForPushNotifications()
     .then(token => (token ? savePushToken(uid, token) : undefined))
-    .catch(() => {});
+    .catch(error => console.warn('[auth] push registration failed —', error));
 }
 
 /** The owner screens' live Firestore listeners, closed before anyone is signed out. */
@@ -139,6 +140,7 @@ export function useAuthController() {
         }
         setProfile(admission.profile);
       } catch (error) {
+        console.warn('[auth] sign-in failed —', error);
         setSignInError(error instanceof Error ? friendlySignInError(error.message) : 'Sign-in failed.');
       } finally {
         setSigningIn(false);
@@ -169,7 +171,7 @@ export function useAuthController() {
           // failure is clean and the same email can be retried, rather than
           // leaving a half-created account stuck logged in.
           suppressNextAuthChange = false;
-          await signOutUser().catch(() => {});
+          await signOutUser().catch(e => console.warn('[auth] sign-out (rollback) failed —', e));
           throw profileError;
         }
 
@@ -177,6 +179,7 @@ export function useAuthController() {
         setProfile(newProfile);
         registerPush(user.uid);
       } catch (error) {
+        console.warn('[auth] sign-up failed —', error);
         setSignInError(error instanceof Error ? friendlySignUpError(error.message) : 'Sign-up failed.');
       } finally {
         setSigningIn(false);

@@ -29,7 +29,8 @@ export function useProfileController() {
         // Without a Firebase project (demo mode) there's nowhere to save — keep it on this device only.
         if (HAS_FIREBASE_CONFIG) await updateOwnProfile(profile.id, changes);
         setProfile({ ...profile, ...changes });
-      } catch {
+      } catch (error) {
+        console.warn('[profile] save failed —', error);
         setError("Couldn't save that change. Check your connection and try again.");
       } finally {
         setSaving(false);
@@ -52,7 +53,8 @@ export function useProfileController() {
     let avatar: string | null;
     try {
       avatar = await pickAvatarImage();
-    } catch {
+    } catch (error) {
+      console.warn('[profile] avatar pick failed —', error);
       setError("Couldn't open that photo. Try a different one.");
       return;
     }

@@ -22,7 +22,7 @@ export async function requestLocationPermissions(): Promise<LocationPermissionSt
  * and a request returns "denied" without asking.
  */
 export async function openAppSettings(): Promise<void> {
-  await Linking.openSettings().catch(() => {});
+  await Linking.openSettings().catch(error => console.warn('[permissions] opening Settings failed —', error));
 }
 
 /**
