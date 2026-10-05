@@ -108,6 +108,8 @@ export interface Photo {
   plusCode: string;
   takenAt: number;
   personId: string;
+  /** Stamped at capture time so attribution survives a rename/deactivation. Absent on photos taken before this field existed. */
+  personName?: string;
   task: string;
   synced: boolean;
 }

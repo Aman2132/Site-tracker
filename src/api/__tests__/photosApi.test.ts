@@ -128,6 +128,25 @@ describe('uploadPhotos', () => {
     expect(Object.values(doc)).not.toContain(undefined);
   });
 
+  it('records the uploader name when the capture has one', async () => {
+    mockBucket();
+
+    await uploadPhotos([{ ...pending, personName: 'Test2' }]);
+
+    const [, doc] = (addDoc as jest.Mock).mock.calls[0];
+    expect(doc.personName).toBe('Test2');
+  });
+
+  it('sends no personName field for a capture from before that field existed', async () => {
+    mockBucket();
+
+    await uploadPhotos([pending]);
+
+    const [, doc] = (addDoc as jest.Mock).mock.calls[0];
+    expect(doc).not.toHaveProperty('personName');
+    expect(Object.values(doc)).not.toContain(undefined);
+  });
+
   it('treats a record saved before video existed as a photo', async () => {
     const { upload } = mockBucket();
     const legacy: Photo = { ...pending };

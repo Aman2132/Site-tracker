@@ -10,9 +10,9 @@ export default function PhotoGridCell({ photo }: { photo: Photo }) {
     <View style={styles.cell}>
       <Image source={{ uri: photo.uri }} style={styles.thumb} />
       <View style={styles.scrim}>
-        <Ionicons name="location" size={9} color={colors.white} />
+        <Ionicons name="person" size={9} color={colors.white} />
         <Text style={styles.overlayText} numberOfLines={1}>
-          {photo.lat.toFixed(4)}, {photo.lng.toFixed(4)}
+          {photo.personName ?? 'Unknown'}
         </Text>
       </View>
       {photo.mediaType === 'video' && (

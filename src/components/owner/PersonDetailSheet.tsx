@@ -41,7 +41,10 @@ interface PersonDetailSheetProps {
 export default function PersonDetailSheet({ person, onClose, children }: PersonDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const isStale = person.kind === 'stale' || person.paused;
-  const fixAgeMs = Date.now() - person.lastFixAt;
+  // lastFixAt is 0 for someone who has never reported a position (see
+  // peopleApi.ts) — timeAgo(Date.now() - 0) would read as ~56,000 years.
+  const hasFix = person.lastFixAt > 0;
+  const updatedLabel = hasFix ? timeAgo(Date.now() - person.lastFixAt) : 'Never';
   const batteryIcon: IconName =
     person.battery == null
       ? 'battery-full-outline'
@@ -85,13 +88,13 @@ export default function PersonDetailSheet({ person, onClose, children }: PersonD
       {isStale && (
         <View style={styles.banner}>
           <Ionicons name="warning" size={14} color={colors.warningText} />
-          <Text style={styles.bannerText}>Not live · last seen {timeAgo(fixAgeMs)}</Text>
+          <Text style={styles.bannerText}>Not live · last seen {updatedLabel}</Text>
         </View>
       )}
 
       <View style={styles.grid}>
         <Row icon={ACTIVITY_ICON[person.kind]} label="Activity" value={ACTIVITY_LABEL[person.kind]} />
-        <Row icon="time-outline" label="Updated" value={timeAgo(fixAgeMs)} />
+        <Row icon="time-outline" label="Updated" value={updatedLabel} />
         <Row icon="locate-outline" label="Accuracy" value={formatAccuracy(person.accuracy)} />
         <Row icon={batteryIcon} label="Battery" value={formatBatteryPercent(person.battery)} />
       </View>

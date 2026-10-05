@@ -89,6 +89,7 @@ export function usePhotoCaptureController() {
   const addPhoto = usePhotoStore(state => state.addPhoto);
   /** Whoever is signed in — worker or owner; their captures are filed under them. */
   const myId = useAuthStore(state => state.profile?.id);
+  const myName = useAuthStore(state => state.profile?.name);
   const [lastSavedLabel, setLastSavedLabel] = useState<string | null>(null);
   const [lastSavedIsPrecise, setLastSavedIsPrecise] = useState(true);
   /** Smoothed + rounded for display only; the raw fix used for geotagging lives in liveFixRef. */
@@ -208,6 +209,7 @@ export function usePhotoCaptureController() {
           plusCode: plusCodeFor({ lat, lng }),
           takenAt,
           personId: myId,
+          personName: myName,
           task,
           synced: false,
         });
@@ -220,7 +222,7 @@ export function usePhotoCaptureController() {
         setIsSaving(false);
       }
     },
-    [keepCapture, myId]
+    [keepCapture, myId, myName]
   );
 
   const finishVideo = useCallback(
@@ -246,13 +248,14 @@ export function usePhotoCaptureController() {
         plusCode: plusCodeFor({ lat, lng }),
         takenAt: meta.startedAt,
         personId: myId,
+        personName: myName,
         task: meta.task,
         synced: false,
       });
       setLastSavedIsPrecise(accuracy <= GEOTAG_ACCURACY.goodMeters);
       setLastSavedLabel(`Video ${formatDuration(durationMs)} · ±${Math.round(accuracy)} m`);
     },
-    [keepCapture, myId, stopRecordingTimer]
+    [keepCapture, myId, myName, stopRecordingTimer]
   );
 
   const startVideo = useCallback(

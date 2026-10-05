@@ -69,6 +69,9 @@ export async function uploadPhotos(photos: Photo[]): Promise<void> {
       plusCode: photo.plusCode,
       takenAt: photo.takenAt,
       personId: photo.personId,
+      // Firestore rejects `undefined`, so only send it when the capture has one
+      // (older queued photos from before this field existed won't).
+      ...(photo.personName != null ? { personName: photo.personName } : {}),
       task: photo.task,
       mediaType: photo.mediaType ?? 'photo',
       // Firestore rejects `undefined` field values outright, so only send a
