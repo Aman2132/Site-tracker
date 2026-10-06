@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 
-type IconName = keyof typeof Ionicons.glyphMap;
+type IconName = Extract<keyof typeof Ionicons.glyphMap, string>;
 
 interface AppTabBarProps extends BottomTabBarProps {
   /** Solid icon name per route, e.g. { Map: 'map' }. The outline variant is derived automatically. */

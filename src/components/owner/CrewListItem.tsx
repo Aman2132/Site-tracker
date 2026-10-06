@@ -17,19 +17,24 @@ const STATUS_COLOR: Record<Person['kind'], string> = {
 export default function CrewListItem({ person, onPress }: { person: Person; onPress?: () => void }) {
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, person.active === false && styles.cardInactive]}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
     >
       <View>
-        <InitialsAvatar name={person.name} color={person.color} faded={person.kind === 'stale'} />
+        <InitialsAvatar
+          name={person.name}
+          color={person.color}
+          imageUri={person.avatar}
+          faded={person.kind === 'stale'}
+        />
         <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[person.kind] }]} />
       </View>
       <View style={styles.textColumn}>
         <Text style={styles.name}>{person.name}</Text>
         <Text style={styles.meta}>
-          {person.role} · {formatAccuracy(person.accuracy)}
+          {person.role} · {person.active === false ? 'Deactivated' : formatAccuracy(person.accuracy)}
         </Text>
       </View>
       {onPress && <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}
@@ -58,6 +63,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
+  cardInactive: { opacity: 0.55 },
   textColumn: { flex: 1 },
   name: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.text },
   meta: { fontFamily: fontFamily.regular, fontSize: 12, color: colors.textMuted, marginTop: 2 },

@@ -54,6 +54,10 @@ export const colors = {
 
   overlayDark: 'rgba(8,9,18,0.94)',
   overlayScrim: 'rgba(8,9,18,0.5)',
+  /** Translucent dark pills floating over the live camera preview. */
+  glass: 'rgba(0,0,0,0.45)',
+  glassStrong: 'rgba(0,0,0,0.65)',
+  onGlassMuted: 'rgba(255,255,255,0.65)',
   black: '#000000',
   white: '#ffffff',
 } as const;

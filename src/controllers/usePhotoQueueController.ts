@@ -1,56 +1,111 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
+import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
-import { loadQueuedPhotos, saveQueuedPhotos } from '@/services/photoQueueStorage';
-import { useEventStore } from '@/store/useEventStore';
+import { HAS_FIREBASE_CONFIG } from '@/constants/config';
+import { SEED_PHOTOS } from '@/constants/mockData';
+import { listGalleryCaptures } from '@/services/mediaLibraryService';
+import { requestGallerySavePermission } from '@/services/permissionsService';
+import { loadLocalPhotos, markLocalPhotosSynced, saveLocalPhotos } from '@/services/photoQueueStorage';
+import { useAuthStore } from '@/store/useAuthStore';
 import { selectPendingPhotos, usePhotoStore } from '@/store/usePhotoStore';
+import { Photo } from '@/types/domain';
+import { mergeById, mergePhotoLists, photoFromCaptureFileName } from '@/utils/photos';
 
-let persistenceWired = false;
-
-/** Mirrors the photo queue to disk on every change. Wired once per app run. */
-function wirePersistenceOnce(): void {
-  if (persistenceWired) return;
-  persistenceWired = true;
-  usePhotoStore.subscribe(state => {
-    saveQueuedPhotos(state.photos);
+/**
+ * This person's captures found in the gallery album — after a reinstall,
+ * the only copy left. Empty when there's no gallery access.
+ */
+async function recoverFromGallery(personId: string): Promise<Photo[]> {
+  if (!(await requestGallerySavePermission())) return [];
+  const files = await listGalleryCaptures().catch(e => {
+    console.warn('[photos] gallery scan failed —', e);
+    return [];
   });
+  return files
+    .map(photoFromCaptureFileName)
+    .filter((photo): photo is Photo => photo !== null && photo.personId === personId);
 }
 
 /**
- * Shared by the owner Photos screen and the worker Queue screen: loads the
- * photo queue (resuming an offline session from disk, or seeding demo data
- * on first run) and exposes sync-to-backend.
+ * Shared by the owner Photos screen and the worker Queue screen: shows every
+ * capture taken on this phone by the signed-in person — from their own saved
+ * list, plus anything in the gallery album that list lost (a reinstall) —
+ * alongside what the backend has, and exposes sync-to-backend.
+ *
+ * Captures are saved the moment they're taken (usePhotoCaptureController),
+ * per person, so nothing here depends on this screen having been opened.
+ *
+ * Backend visibility is role-scoped: an owner fetches every recent photo, a
+ * worker fetches only their own. firestore.rules enforces the same split
+ * server-side, so a worker cannot widen it by tampering with the client.
  */
 export function usePhotoQueueController() {
   const photos = usePhotoStore(state => state.photos);
-  const loaded = usePhotoStore(state => state.loaded);
+  const loadedFor = usePhotoStore(state => state.loadedFor);
   const setPhotos = usePhotoStore(state => state.setPhotos);
   const markAllSynced = usePhotoStore(state => state.markAllSynced);
   const pendingPhotos = usePhotoStore(selectPendingPhotos);
-  const addEvent = useEventStore(state => state.addEvent);
+  const profile = useAuthStore(state => state.profile);
+  const workerName = profile?.name;
+  const personId = profile?.id;
+  const isOwner = profile?.appRole === 'owner';
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
-    wirePersistenceOnce();
-    if (loaded) return;
+    if (!personId || loadedFor === personId) return;
     (async () => {
-      const queuedOnDisk = await loadQueuedPhotos();
-      if (queuedOnDisk && queuedOnDisk.length > 0) {
-        setPhotos(queuedOnDisk);
-      } else {
-        setPhotos(await fetchPhotos());
-      }
+      const saved = await loadLocalPhotos(personId);
+      const local = mergeById(saved, await recoverFromGallery(personId));
+      if (local.length > saved.length) await saveLocalPhotos(personId, local);
+
+      // Without a Firebase project, demo photos stand in for the backend on an empty phone.
+      const remote = HAS_FIREBASE_CONFIG
+        ? await fetchPhotos(isOwner ? undefined : personId).catch(error => {
+            console.warn('[photos] fetch failed —', error);
+            return [];
+          })
+        : local.length === 0
+          ? SEED_PHOTOS
+          : [];
+
+      // Anything shot while this was loading is already in the store (and on
+      // disk) but not in `local` — keep it rather than overwrite it.
+      const shotMeanwhile = usePhotoStore.getState().photos.filter(photo => photo.personId === personId);
+      setPhotos(mergePhotoLists(mergeById(local, shotMeanwhile), remote), personId);
     })();
-  }, [loaded, setPhotos]);
+  }, [loadedFor, setPhotos, isOwner, personId]);
 
   const syncNow = useCallback(async () => {
-    if (pendingPhotos.length === 0) return;
-    await uploadPhotos(pendingPhotos);
-    markAllSynced();
-    addEvent(
-      `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from Suryakant`,
-      'info'
-    );
-  }, [pendingPhotos, markAllSynced, addEvent]);
+    if (pendingPhotos.length === 0 || syncing || !personId) return;
+    setSyncError(null);
+    setSyncing(true);
+    try {
+      // Without a real Firebase project there's nowhere to upload to — just
+      // flip the local queue to synced, same as the rest of the static mode.
+      if (HAS_FIREBASE_CONFIG) await uploadPhotos(pendingPhotos);
+      markAllSynced();
+      await markLocalPhotosSynced(
+        personId,
+        pendingPhotos.map(photo => photo.id)
+      );
+      if (HAS_FIREBASE_CONFIG) {
+        logEvent(
+          `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`,
+          'info'
+        ).catch(error => console.warn('[photos] activity log failed —', error));
+      }
+    } catch (error) {
+      // The queue is left untouched, so the photos are still safe on disk and
+      // the worker can retry — but they need to know it didn't go through.
+      console.warn('[photos] sync failed —', error);
+      setSyncError('Upload failed — photos are still saved. Check your connection and tap Sync again.');
+    } finally {
+      setSyncing(false);
+    }
+  }, [pendingPhotos, markAllSynced, workerName, syncing, personId]);
 
-  return { photos, pendingCount: pendingPhotos.length, syncNow };
+  return { photos, pendingCount: pendingPhotos.length, syncNow, syncing, syncError };
 }

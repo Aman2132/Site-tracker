@@ -1,0 +1,8 @@
+{
+  "name": "site-tracker-scripts",
+  "private": true,
+  "description": "One-off admin scripts. Not part of the app bundle — run with `node scripts/seedFirebase.js`, never imported by the RN app.",
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

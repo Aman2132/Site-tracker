@@ -4,7 +4,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import DevRoleSwitchButton from '@/components/common/DevRoleSwitchButton';
+import InitialsAvatar from '@/components/common/InitialsAvatar';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import StatRow from '@/components/common/StatRow';
 import PauseToggleRow from '@/components/worker/PauseToggleRow';
@@ -12,8 +12,7 @@ import ShareStatusCard from '@/components/worker/ShareStatusCard';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 import { useLocationSharingController } from '@/controllers/useLocationSharingController';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
-
-const WORKER_NAME = 'Suryakant';
+import { useAuthStore } from '@/store/useAuthStore';
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -25,6 +24,8 @@ function greeting(): string {
 export default function HomeScreen() {
   const { paused, togglePause } = useLocationSharingController();
   const { pendingCount } = usePhotoQueueController();
+  const profile = useAuthStore(state => state.profile);
+  const name = profile?.name ?? '';
   const insets = useSafeAreaInsets();
 
   return (
@@ -37,11 +38,21 @@ export default function HomeScreen() {
       >
         <View>
           <Text style={styles.eyebrow}>{greeting().toUpperCase()}</Text>
-          <Text style={styles.greeting}>{WORKER_NAME}</Text>
+          <Text style={styles.greeting}>{name}</Text>
         </View>
-        <LinearGradient colors={gradients.sheen} style={styles.avatarWrap}>
-          <Ionicons name="construct" size={20} color={colors.white} />
-        </LinearGradient>
+        {profile ? (
+          <InitialsAvatar
+            name={profile.name}
+            color={profile.color}
+            imageUri={profile.avatar}
+            size={48}
+            ringed
+          />
+        ) : (
+          <LinearGradient colors={gradients.sheen} style={styles.avatarWrap}>
+            <Ionicons name="construct" size={20} color={colors.white} />
+          </LinearGradient>
+        )}
       </LinearGradient>
 
       <View style={styles.body}>
@@ -53,8 +64,6 @@ export default function HomeScreen() {
           icon="cloud-upload-outline"
           gradient={gradients.worker}
         />
-
-        <DevRoleSwitchButton targetRole="owner" label="View as owner" style={styles.roleSwitch} />
       </View>
     </ScreenContainer>
   );
@@ -83,5 +92,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   body: { flex: 1, paddingHorizontal: spacing.lg, marginTop: -spacing.lg },
-  roleSwitch: { marginTop: 'auto', marginBottom: spacing.xl, alignSelf: 'center' },
 });
