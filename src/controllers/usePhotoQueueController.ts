@@ -4,13 +4,14 @@ import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
 import { HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { SEED_PHOTOS } from '@/constants/mockData';
+import { createThumbnail } from '@/services/thumbnailService';
 import { listGalleryCaptures } from '@/services/mediaLibraryService';
 import { requestGallerySavePermission } from '@/services/permissionsService';
 import { loadLocalPhotos, markLocalPhotosSynced, saveLocalPhotos } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { selectPendingPhotos, usePhotoStore } from '@/store/usePhotoStore';
 import { Photo } from '@/types/domain';
-import { mergeById, mergePhotoLists, photoFromCaptureFileName } from '@/utils/photos';
+import { countBySite, mergeById, mergePhotoLists, photoFromCaptureFileName } from '@/utils/photos';
 
 /**
  * This person's captures found in the gallery album — after a reinstall,
@@ -25,6 +26,17 @@ async function recoverFromGallery(personId: string): Promise<Photo[]> {
   return files
     .map(photoFromCaptureFileName)
     .filter((photo): photo is Photo => photo !== null && photo.personId === personId);
+}
+
+/** A small preview for each pending photo (videos get none), keyed by photo id. A failed one is just skipped. */
+async function makeThumbnails(photos: Photo[]): Promise<Record<string, string>> {
+  const thumbs: Record<string, string> = {};
+  for (const photo of photos) {
+    if (photo.mediaType === 'video') continue;
+    const uri = await createThumbnail(photo.uri);
+    if (uri) thumbs[photo.id] = uri;
+  }
+  return thumbs;
 }
 
 /**
@@ -85,17 +97,21 @@ export function usePhotoQueueController() {
     try {
       // Without a real Firebase project there's nowhere to upload to — just
       // flip the local queue to synced, same as the rest of the static mode.
-      if (HAS_FIREBASE_CONFIG) await uploadPhotos(pendingPhotos);
+      if (HAS_FIREBASE_CONFIG) await uploadPhotos(pendingPhotos, await makeThumbnails(pendingPhotos));
       markAllSynced();
       await markLocalPhotosSynced(
         personId,
         pendingPhotos.map(photo => photo.id)
       );
       if (HAS_FIREBASE_CONFIG) {
-        logEvent(
-          `${pendingPhotos.length} photo${pendingPhotos.length > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`,
-          'info'
-        ).catch(error => console.warn('[photos] activity log failed —', error));
+        // One entry per site, so the dashboard can file each under the right site.
+        for (const [siteId, count] of countBySite(pendingPhotos)) {
+          logEvent(`${count} photo${count > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`, 'info', {
+            type: 'upload',
+            personId,
+            siteId,
+          }).catch(error => console.warn('[photos] activity log failed —', error));
+        }
       }
     } catch (error) {
       // The queue is left untouched, so the photos are still safe on disk and

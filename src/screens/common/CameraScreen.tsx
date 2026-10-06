@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera } from 'react-native-vision-camera';
@@ -14,11 +14,11 @@ import CaptureToast from '@/components/worker/CaptureToast';
 import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
 import RecordingBadge from '@/components/worker/RecordingBadge';
+import TaskEditorSheet from '@/components/worker/TaskEditorSheet';
 import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { useCameraController } from '@/controllers/useCameraController';
-
-const DEFAULT_TASK_LABEL = 'Column grid L4';
+import { useCaptureTaskController } from '@/controllers/useCaptureTaskController';
 
 /**
  * Camera tab (workers and owners). Camera permission is settled first; the
@@ -35,6 +35,7 @@ export default function CameraScreen() {
 }
 
 function CameraView() {
+  const { task, recent, setTask } = useCaptureTaskController();
   const {
     cameraRef,
     device,
@@ -66,8 +67,9 @@ function CameraView() {
     clearLastSavedLabel,
     liveAccuracy,
     hasFix,
-  } = useCameraController(DEFAULT_TASK_LABEL);
+  } = useCameraController(task);
   const insets = useSafeAreaInsets();
+  const [editingTask, setEditingTask] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -126,10 +128,18 @@ function CameraView() {
         <Ionicons name="close" size={22} color={colors.white} />
       </TouchableOpacity>
 
-      <View style={[styles.taskBar, { top: insets.top + spacing.sm }]}>
-        <Ionicons name="location" size={13} color={colors.white} />
-        <Text style={styles.taskText}>{DEFAULT_TASK_LABEL}</Text>
-      </View>
+      <TouchableOpacity
+        style={[styles.taskBar, { top: insets.top + spacing.sm }]}
+        onPress={() => setEditingTask(true)}
+        disabled={isRecording}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Change what you are shooting"
+      >
+        <Ionicons name="pricetag" size={13} color={colors.white} />
+        <Text style={styles.taskText}>{task}</Text>
+        <Ionicons name="create-outline" size={13} color={colors.onGlassMuted} />
+      </TouchableOpacity>
 
       <View style={[styles.accuracyBar, { top: insets.top + spacing.sm + 40 }]}>
         {isRecording ? (
@@ -163,6 +173,14 @@ function CameraView() {
       />
 
       {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
+
+      <TaskEditorSheet
+        visible={editingTask}
+        task={task}
+        recent={recent}
+        onSave={setTask}
+        onClose={() => setEditingTask(false)}
+      />
     </View>
   );
 }

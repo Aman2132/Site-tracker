@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { listGalleryCaptures } from '@/services/mediaLibraryService';
@@ -256,5 +257,54 @@ describe('usePhotoQueueController sync', () => {
     await waitFor(() => expect(usePhotoStore.getState().photos[0].synced).toBe(true));
     expect(result.current.syncError).toBeNull();
     expect(markLocalPhotosSynced).toHaveBeenCalledWith('worker-1', ['pending']);
+  });
+
+  it('lets an owner sync their own captures too, filed under the owner', async () => {
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    useAuthStore.setState({ profile: owner });
+    usePhotoStore.setState({
+      photos: [queuedPhoto({ id: 'mine', personId: 'owner-1', synced: false })],
+      loaded: true,
+      loadedFor: 'owner-1',
+    });
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncNow());
+
+    expect(uploadPhotos).toHaveBeenCalledWith([expect.objectContaining({ id: 'mine', personId: 'owner-1' })], expect.anything());
+    expect(markLocalPhotosSynced).toHaveBeenCalledWith('owner-1', ['mine']);
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('uploaded from Administrator'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'owner-1' })
+    );
+  });
+
+  it('logs one typed upload event per site, so the dashboard can file each', async () => {
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    usePhotoStore.setState({
+      photos: [
+        queuedPhoto({ id: 'a', siteId: 'site-1' }),
+        queuedPhoto({ id: 'b', siteId: 'site-1' }),
+        queuedPhoto({ id: 'c' }),
+      ],
+      loaded: true,
+      loadedFor: 'worker-1',
+    });
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncNow());
+
+    expect(logEvent).toHaveBeenCalledTimes(2);
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('2 photos uploaded'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'worker-1', siteId: 'site-1' })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('1 photo uploaded'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'worker-1', siteId: undefined })
+    );
   });
 });

@@ -12,6 +12,7 @@ import {
 import { addLocalPhoto } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
+import { useShiftStore } from '@/store/useShiftStore';
 import { GeoFix } from '@/types/domain';
 
 jest.mock('@/constants/config', () => ({
@@ -34,7 +35,7 @@ jest.mock('@/services/permissionsService', () => ({
   requestForegroundLocationPermission: jest.fn(async () => true),
 }));
 
-const camera = { takePhoto: jest.fn(async () => ({ path: '/tmp/shot.jpg' })) } as never;
+const camera = { takePhoto: jest.fn(async () => ({ path: '/tmp/shot.jpg', width: 4032, height: 3024, orientation: 'landscape-left' })) } as never;
 
 /** Pushes a fix through the controller's GPS watch. */
 function primeFix(fix: GeoFix) {
@@ -211,6 +212,38 @@ describe('usePhotoCaptureController geotag source', () => {
 
     expect(usePhotoStore.getState().photos).toHaveLength(0);
     expect(saveToDeviceGallery).not.toHaveBeenCalled();
+  });
+});
+
+describe('usePhotoCaptureController check-in details', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null });
+    useShiftStore.setState({ active: null });
+    useAuthStore.setState({
+      profile: { id: 'worker-1', name: 'Ramesh', role: 'Driver', appRole: 'worker', color: '#1a73e8' },
+    });
+    primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
+  });
+
+  it('stamps the site the person is checked in at, and the photo size as shown', async () => {
+    useShiftStore.setState({
+      active: { siteId: 'site-1', siteName: 'Tower B', checkedInAt: 1, sessionId: 's', paused: false },
+    });
+    const { result } = renderHook(() => usePhotoCaptureController());
+
+    await act(() => result.current.capturePhoto(camera, 'Task'));
+
+    // The mock camera reports 4032x3024 with a landscape-left orientation, i.e. an upright portrait shot.
+    expect(usePhotoStore.getState().photos[0]).toMatchObject({ siteId: 'site-1', width: 3024, height: 4032 });
+  });
+
+  it('leaves the site off when nobody is checked in', async () => {
+    const { result } = renderHook(() => usePhotoCaptureController());
+
+    await act(() => result.current.capturePhoto(camera, 'Task'));
+
+    expect(usePhotoStore.getState().photos[0]).not.toHaveProperty('siteId');
   });
 });
 

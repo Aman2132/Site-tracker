@@ -20,6 +20,14 @@ export default function ProfileScreen() {
   const isOwner = profile.appRole === 'owner';
   const accent = isOwner ? colors.primary : colors.worker;
   const nameChanged = name.trim().length > 0 && name.trim() !== profile.name;
+  // Phone and team are set by the admin when they invite someone; self-signed-up accounts have neither.
+  const details: [label: string, value: string][] = [
+    ['Email', email ?? '—'],
+    ...(profile.phone ? [['Phone', profile.phone] as [string, string]] : []),
+    ['Job title', profile.role],
+    ...(profile.team ? [['Team', profile.team] as [string, string]] : []),
+    ['Account', isOwner ? 'Owner' : 'Worker'],
+  ];
 
   return (
     <KeyboardAwareScrollView
@@ -72,9 +80,9 @@ export default function ProfileScreen() {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={[styles.card, shadow.sm]}>
-        <DetailRow label="Email" value={email ?? '—'} />
-        <DetailRow label="Job title" value={profile.role} />
-        <DetailRow label="Account" value={isOwner ? 'Owner' : 'Worker'} last />
+        {details.map(([label, value], index) => (
+          <DetailRow key={label} label={label} value={value} last={index === details.length - 1} />
+        ))}
       </View>
 
       <SignOutButton style={styles.signOut} />

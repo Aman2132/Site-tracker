@@ -4,8 +4,10 @@ import { createPersonProfile, fetchPersonProfile, savePushToken } from '@/api/pe
 import { stopEventsSubscription } from '@/controllers/useActivityFeedController';
 import { performSignOut, useAuthController, useAuthSessionController } from '@/controllers/useAuthController';
 import { stopCrewSubscription } from '@/controllers/useCrewTrackingController';
+import { endShiftOnSignOut } from '@/controllers/useShiftController';
 import { currentUserId, onAuthChange, signIn, signOutUser, signUp } from '@/services/authService';
 import { registerForPushNotifications } from '@/services/pushService';
+import { stopSharing } from '@/services/sharingService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { PersonProfile } from '@/types/domain';
 
@@ -27,6 +29,8 @@ jest.mock('@/services/pushService', () => ({
 }));
 jest.mock('@/controllers/useCrewTrackingController', () => ({ stopCrewSubscription: jest.fn() }));
 jest.mock('@/controllers/useActivityFeedController', () => ({ stopEventsSubscription: jest.fn() }));
+jest.mock('@/controllers/useShiftController', () => ({ endShiftOnSignOut: jest.fn(async () => undefined) }));
+jest.mock('@/services/sharingService', () => ({ stopSharing: jest.fn(async () => undefined) }));
 
 const workerProfile: PersonProfile = {
   id: 'worker-9',
@@ -194,6 +198,13 @@ describe('session listener', () => {
     expect(useAuthStore.getState().profile).toBeNull();
   });
 
+  it('stops tracking when the session ends from elsewhere', async () => {
+    renderHook(() => useAuthSessionController());
+    await act(() => authChangeCallback(null));
+
+    expect(stopSharing).toHaveBeenCalled();
+  });
+
   it('clears the deactivation notice on the next sign-in attempt', async () => {
     useAuthStore.setState({ profile: null, signedOutReason: 'This account has been deactivated.' });
 
@@ -290,9 +301,13 @@ describe('performSignOut', () => {
     (signOutUser as jest.Mock).mockImplementation(async () => {
       order.push('signOut');
     });
+    (endShiftOnSignOut as jest.Mock).mockImplementation(async () => {
+      order.push('shift');
+    });
 
     await performSignOut(jest.fn());
 
-    expect(order).toEqual(['crew', 'events', 'signOut']);
+    // The shift is ended first: closing the session still needs the signed-in user.
+    expect(order).toEqual(['shift', 'crew', 'events', 'signOut']);
   });
 });

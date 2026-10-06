@@ -2,7 +2,7 @@ import { addDoc, collection, limit, onSnapshot, orderBy, query, serverTimestamp 
 
 import { firestore } from './firebaseClient';
 
-import { AppEvent, EventKind } from '@/types/domain';
+import { AppEvent, EventKind, EventType } from '@/types/domain';
 
 const EVENTS_COLLECTION = 'events';
 const MAX_EVENTS = 100;
@@ -26,9 +26,24 @@ export function subscribeToEvents(
     snapshot => {
       onChange(
         snapshot.docs.map(d => {
-          const data = d.data() as { text: string; kind: EventKind; at: { toMillis(): number } | number };
+          const data = d.data() as {
+            text: string;
+            kind: EventKind;
+            at: { toMillis(): number } | number;
+            type?: EventType;
+            personId?: string;
+            siteId?: string;
+          };
           const at = typeof data.at === 'number' ? data.at : (data.at?.toMillis() ?? Date.now());
-          return { id: d.id, text: data.text, kind: data.kind, at };
+          return {
+            id: d.id,
+            text: data.text,
+            kind: data.kind,
+            at,
+            ...(data.type ? { type: data.type } : {}),
+            ...(data.personId ? { personId: data.personId } : {}),
+            ...(data.siteId ? { siteId: data.siteId } : {}),
+          };
         })
       );
     },
@@ -36,7 +51,16 @@ export function subscribeToEvents(
   );
 }
 
+/** What the dashboard filters on; every field is optional, so older call sites keep working. */
+export interface EventDetails {
+  type?: EventType;
+  personId?: string;
+  siteId?: string;
+}
+
 /** Persists a new activity event so it reaches every device watching the feed. */
-export async function logEvent(text: string, kind: EventKind): Promise<void> {
-  await addDoc(collection(firestore, EVENTS_COLLECTION), { text, kind, at: serverTimestamp() });
+export async function logEvent(text: string, kind: EventKind, details: EventDetails = {}): Promise<void> {
+  // Firestore rejects `undefined`, so absent details are dropped rather than sent.
+  const present = Object.fromEntries(Object.entries(details).filter(([, value]) => value != null));
+  await addDoc(collection(firestore, EVENTS_COLLECTION), { text, kind, ...present, at: serverTimestamp() });
 }

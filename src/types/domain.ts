@@ -60,6 +60,49 @@ export interface PersonProfile {
    * set from their Profile tab. Missing means "show initials instead".
    */
   avatar?: string;
+  /** Sites this person is assigned to (`sites/{id}`); set by an owner from the admin dashboard. Missing means none. */
+  siteIds?: string[];
+  /** Contact + grouping details the admin dashboard records when it invites someone. */
+  email?: string;
+  phone?: string;
+  team?: string;
+}
+
+/** A project. Has a name and crew, deliberately no location. Created and edited from the admin dashboard. */
+export interface Site {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+/**
+ * One continuous stretch of checked-in time (`sessions/{id}`). Check-in opens
+ * it, check-out or a pause closes it; `end` is absent while it is open. A
+ * session that never closes (dead phone) is judged by the dashboard from the
+ * person's last position fix.
+ */
+export interface PresenceSession {
+  id: string;
+  personId: string;
+  siteId: string;
+  start: number;
+  end?: number;
+  endReason?: SessionEndReason;
+}
+
+export type SessionEndReason = 'signed-off' | 'paused';
+
+/**
+ * The person's current check-in as the phone remembers it, so it survives an
+ * app restart (see services/shiftStorage.ts).
+ */
+export interface ActiveShift {
+  siteId: string;
+  siteName: string;
+  checkedInAt: number;
+  /** Id of the open `sessions` doc. Null while paused (a pause closes it; resume opens a new one). */
+  sessionId: string | null;
+  paused: boolean;
 }
 
 /** What someone can change about themselves on their Profile tab. */
@@ -112,15 +155,28 @@ export interface Photo {
   personName?: string;
   task: string;
   synced: boolean;
+  /** Site the person was checked in at when this was captured. Absent when not checked in. */
+  siteId?: string;
+  /** Pixel size of the original, for the dashboard's gallery layout. Absent on older captures. */
+  width?: number;
+  height?: number;
+  /** Small preview in Supabase, made on the phone at sync. Absent for videos and older uploads. */
+  thumbUrl?: string;
 }
 
 export type EventKind = 'info' | 'warn';
+
+/** What happened, for the dashboard's filters and icons. Missing on events written before this existed. */
+export type EventType = 'checkin' | 'checkout' | 'pause' | 'resume' | 'upload' | 'battery' | 'crew' | 'site';
 
 export interface AppEvent {
   id: string;
   at: number;
   text: string;
   kind: EventKind;
+  type?: EventType;
+  personId?: string;
+  siteId?: string;
 }
 
 export interface LocationPermissionState {

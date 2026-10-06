@@ -14,6 +14,19 @@ import { supabase } from './supabaseClient';
 
 import { Photo } from '@/types/domain';
 
+/*
+ * 🚨🚨🚨 READ BEFORE ADDING ANY "DELETE PHOTO" CODE 🚨🚨🚨
+ *
+ * ❗ A photo is TWO files + ONE Firestore record, and all three must be deleted
+ *    together: the original file, the `_thumb.jpg` thumbnail, AND the Firestore
+ *    record (it holds the path / URL). Delete only one and you leave a BROKEN
+ *    IMAGE (record without file) or an ORPHAN FILE (file without record).
+ *
+ *    The project owner left this note for themselves.
+ *    Checklist: docs/READ-BEFORE-BUILDING-PHOTO-DELETION.md
+ *    Also: firestore.rules currently blocks deleting photos — that must change.
+ */
+
 const PHOTOS_COLLECTION = 'photos';
 const RECENT_PHOTOS_LIMIT = 60;
 
@@ -40,8 +53,22 @@ export async function fetchPhotos(personId?: string): Promise<Photo[]> {
   return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<Photo, 'id'>) }));
 }
 
-/** Uploads each queued photo or video to Supabase Storage, then writes its metadata to Firestore. */
-export async function uploadPhotos(photos: Photo[]): Promise<void> {
+/** Uploads one small preview next to the original and returns its public URL. */
+async function uploadThumbnail(photo: Photo, thumbUri: string): Promise<string> {
+  const body = await (await fetch(thumbUri)).arrayBuffer();
+  const path = `${photo.personId}/${photo.id}_thumb.jpg`;
+  const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, body, { contentType: 'image/jpeg', upsert: true });
+  if (error) throw error;
+  return supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Uploads each queued photo or video to Supabase Storage, then writes its
+ * metadata to Firestore. `thumbUris` maps a photo id to a small local preview
+ * (made on the phone, see thumbnailService) which is uploaded alongside it so
+ * the admin dashboard can show a gallery without pulling every original.
+ */
+export async function uploadPhotos(photos: Photo[], thumbUris: Record<string, string> = {}): Promise<void> {
   for (const photo of photos) {
     // arrayBuffer(), not blob() — RN's Blob polyfill silently truncates
     // large files on Android, arrayBuffer() doesn't have that problem. It
@@ -60,6 +87,8 @@ export async function uploadPhotos(photos: Photo[]): Promise<void> {
     const {
       data: { publicUrl },
     } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
+    const thumbUri = thumbUris[photo.id];
+    const thumbUrl = thumbUri ? await uploadThumbnail(photo, thumbUri) : undefined;
 
     await addDoc(collection(firestore, PHOTOS_COLLECTION), {
       uri: publicUrl,
@@ -72,6 +101,9 @@ export async function uploadPhotos(photos: Photo[]): Promise<void> {
       // Firestore rejects `undefined`, so only send it when the capture has one
       // (older queued photos from before this field existed won't).
       ...(photo.personName != null ? { personName: photo.personName } : {}),
+      ...(photo.siteId != null ? { siteId: photo.siteId } : {}),
+      ...(photo.width != null && photo.height != null ? { width: photo.width, height: photo.height } : {}),
+      ...(thumbUrl ? { thumbUrl } : {}),
       task: photo.task,
       mediaType: photo.mediaType ?? 'photo',
       // Firestore rejects `undefined` field values outright, so only send a

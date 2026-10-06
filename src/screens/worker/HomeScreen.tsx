@@ -7,11 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import InitialsAvatar from '@/components/common/InitialsAvatar';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import StatRow from '@/components/common/StatRow';
+import CheckInCard from '@/components/worker/CheckInCard';
 import PauseToggleRow from '@/components/worker/PauseToggleRow';
 import ShareStatusCard from '@/components/worker/ShareStatusCard';
+import ShiftCard from '@/components/worker/ShiftCard';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 import { useLocationSharingController } from '@/controllers/useLocationSharingController';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
+import { useShiftController } from '@/controllers/useShiftController';
 import { useAuthStore } from '@/store/useAuthStore';
 
 function greeting(): string {
@@ -22,7 +25,8 @@ function greeting(): string {
 }
 
 export default function HomeScreen() {
-  const { paused, togglePause } = useLocationSharingController();
+  useLocationSharingController();
+  const shift = useShiftController();
   const { pendingCount } = usePhotoQueueController();
   const profile = useAuthStore(state => state.profile);
   const name = profile?.name ?? '';
@@ -56,8 +60,28 @@ export default function HomeScreen() {
       </LinearGradient>
 
       <View style={styles.body}>
-        <ShareStatusCard paused={paused} />
-        <PauseToggleRow paused={paused} onToggle={togglePause} />
+        {shift.active ? (
+          <>
+            <ShareStatusCard paused={shift.paused} />
+            <ShiftCard
+              siteName={shift.active.siteName}
+              checkedInAt={shift.active.checkedInAt}
+              busy={shift.busy}
+              error={shift.error}
+              onCheckOut={shift.checkOut}
+            />
+            <PauseToggleRow paused={shift.paused} onToggle={shift.togglePause} />
+          </>
+        ) : (
+          <CheckInCard
+            sites={shift.sites}
+            loading={shift.loading || shift.loadingSites}
+            busy={shift.busy}
+            error={shift.error}
+            onCheckIn={shift.checkIn}
+            onRefresh={shift.refreshSites}
+          />
+        )}
         <StatRow
           label="Waiting to upload"
           value={pendingCount}

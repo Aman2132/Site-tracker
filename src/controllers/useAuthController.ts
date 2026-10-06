@@ -5,8 +5,10 @@ import { HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { colors } from '@/constants/theme';
 import { stopEventsSubscription } from '@/controllers/useActivityFeedController';
 import { stopCrewSubscription } from '@/controllers/useCrewTrackingController';
+import { endShiftOnSignOut } from '@/controllers/useShiftController';
 import { currentUserId, onAuthChange, signIn, signOutUser, signUp } from '@/services/authService';
 import { registerForPushNotifications } from '@/services/pushService';
+import { stopSharing } from '@/services/sharingService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { PersonProfile, Role } from '@/types/domain';
 
@@ -86,6 +88,8 @@ export function useAuthSessionController() {
       }
       if (!firebaseUser) {
         stopLiveFeeds();
+        // Signed out from elsewhere (or never signed in): nothing may keep tracking this phone.
+        stopSharing().catch(error => console.warn('[auth] stop sharing failed —', error));
         setProfile(null);
         return;
       }
@@ -202,13 +206,15 @@ export function useAuthController() {
  * Live listeners close first: left open, Firestore rejects them with
  * permission-denied the moment nobody is signed in.
  */
-export function performSignOut(setProfile: (profile: PersonProfile | null) => void): Promise<void> {
+export async function performSignOut(setProfile: (profile: PersonProfile | null) => void): Promise<void> {
+  // First, while still signed in: ends any open shift and stops tracking, which needs the session.
+  await endShiftOnSignOut();
   stopLiveFeeds();
   if (!HAS_FIREBASE_CONFIG) {
     setProfile(null);
-    return Promise.resolve();
+    return;
   }
-  return signOutUser();
+  await signOutUser();
 }
 
 /** Fabricates a local profile for the no-Firebase-yet sign-in bypass — see handleSignIn above. */

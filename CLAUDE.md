@@ -45,6 +45,13 @@ unprompted, and extended to cover commits on 2026-09-20 after Claude
 committed autonomously during a `/loop` run. Do not remove or soften this
 section without the user explicitly saying so.
 
+## Standing instruction — short, information-only replies
+
+Set by the user on 2026-10-05. Answer in as few words as possible and include
+only information: no preamble, recap, options tour, offers or follow-up
+questions unless the answer needs one. Longer output only when the user
+asks for a report or document.
+
 ## Non-negotiables
 
 1. **TypeScript everywhere.** No new `.js`/`.jsx` files under `src/` or at

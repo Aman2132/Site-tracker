@@ -13,11 +13,12 @@ import {
 import { addLocalPhoto } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
+import { useShiftStore } from '@/store/useShiftStore';
 import { GeoFix, Photo } from '@/types/domain';
 import { formatDuration } from '@/utils/camera';
 import { plusCodeFor } from '@/utils/geo';
 import { smoothAccuracy } from '@/utils/gps';
-import { captureFileName, newLocalPhotoId } from '@/utils/photos';
+import { captureFileName, displaySize, newLocalPhotoId } from '@/utils/photos';
 
 const TAG = '[capture]';
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
@@ -64,6 +65,12 @@ async function keepFileLogged(kind: string, photo: Photo): Promise<string> {
     console.warn(`${TAG} ${kind}: could not move out of cache, keeping ${photo.uri} — ${errText(e)}`);
     return photo.uri;
   }
+}
+
+/** The site the person is checked in at right now, stamped on each capture. Absent when not checked in. */
+function currentSite(): { siteId: string } | Record<string, never> {
+  const siteId = useShiftStore.getState().active?.siteId;
+  return siteId ? { siteId } : {};
 }
 
 /** What the worker was doing when a clip started: the geotag is taken then, not when they stop. */
@@ -212,6 +219,8 @@ export function usePhotoCaptureController() {
           personName: myName,
           task,
           synced: false,
+          ...displaySize(photo.width, photo.height, photo.orientation),
+          ...currentSite(),
         });
         setLastSavedIsPrecise(accuracy <= GEOTAG_ACCURACY.goodMeters);
         setLastSavedLabel(`±${Math.round(accuracy)} m`);
@@ -251,6 +260,9 @@ export function usePhotoCaptureController() {
         personName: myName,
         task: meta.task,
         synced: false,
+        width: video.width,
+        height: video.height,
+        ...currentSite(),
       });
       setLastSavedIsPrecise(accuracy <= GEOTAG_ACCURACY.goodMeters);
       setLastSavedLabel(`Video ${formatDuration(durationMs)} · ±${Math.round(accuracy)} m`);

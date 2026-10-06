@@ -1,14 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList } from 'react-native';
 
 import EmptyState from '@/components/common/EmptyState';
 import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import ScreenTitle from '@/components/common/ScreenTitle';
+import PendingSyncBar from '@/components/owner/PendingSyncBar';
 import PersonFilterChips from '@/components/owner/PersonFilterChips';
 import PhotoGridCell from '@/components/owner/PhotoGridCell';
-import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { usePhotoStore } from '@/store/usePhotoStore';
 
@@ -16,7 +15,7 @@ import { usePhotoStore } from '@/store/usePhotoStore';
 const UNKNOWN_ID = '__unknown__';
 
 export default function PhotosScreen() {
-  const { photos, pendingCount } = usePhotoQueueController();
+  const { photos, pendingCount, syncNow, syncing, syncError } = usePhotoQueueController();
   const loaded = usePhotoStore(state => state.loaded);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
@@ -49,13 +48,7 @@ export default function PhotosScreen() {
     <ScreenContainer padded={false}>
       <ScreenTitle>Photos</ScreenTitle>
       {pendingCount > 0 && (
-        <View style={styles.pendingBar}>
-          <Ionicons name="time-outline" size={13} color={colors.warningText} />
-          <Text style={styles.pendingText}>
-            {pendingCount} photo{pendingCount > 1 ? 's' : ''} of yours {pendingCount > 1 ? 'are' : 'is'} saved
-            on this phone, not uploaded yet
-          </Text>
-        </View>
+        <PendingSyncBar pendingCount={pendingCount} syncing={syncing} syncError={syncError} onSync={syncNow} />
       )}
       {people.length > 0 && (
         <PersonFilterChips people={people} selectedId={selectedPersonId} onSelect={setSelectedPersonId} />
@@ -73,18 +66,3 @@ export default function PhotosScreen() {
     </ScreenContainer>
   );
 }
-
-const styles = StyleSheet.create({
-  pendingBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 2,
-    backgroundColor: colors.warningBg,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-  },
-  pendingText: { fontFamily: fontFamily.medium, color: colors.warningText, fontSize: 12 },
-});

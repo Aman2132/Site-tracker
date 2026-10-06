@@ -1,6 +1,8 @@
 import { Photo } from '@/types/domain';
 import {
   captureFileName,
+  countBySite,
+  displaySize,
   mergeById,
   mergePhotoLists,
   newLocalPhotoId,
@@ -114,5 +116,34 @@ describe('mergePhotoLists', () => {
     const remote = [photo({ id: 'r-new', takenAt: 3 }), photo({ id: 'r-old', takenAt: 1 })];
 
     expect(mergePhotoLists(local, remote).map(p => p.id)).toEqual(['r-new', 'l', 'r-old']);
+  });
+});
+
+describe('displaySize', () => {
+  // VisionCamera reports an upright phone photo as landscape pixels plus a landscape-* orientation.
+  it('swaps the sensor size for landscape-* orientations so portrait shots read as portrait', () => {
+    expect(displaySize(4032, 3024, 'landscape-left')).toEqual({ width: 3024, height: 4032 });
+    expect(displaySize(4032, 3024, 'landscape-right')).toEqual({ width: 3024, height: 4032 });
+  });
+
+  it('keeps it as reported otherwise', () => {
+    expect(displaySize(4032, 3024, 'portrait')).toEqual({ width: 4032, height: 3024 });
+  });
+});
+
+describe('countBySite', () => {
+  it('counts per site, keeping captures made while not checked in under undefined', () => {
+    const counts = countBySite([
+      photo({ id: '1', siteId: 'a' }),
+      photo({ id: '2', siteId: 'b' }),
+      photo({ id: '3', siteId: 'a' }),
+      photo({ id: '4' }),
+    ]);
+
+    expect([...counts]).toEqual([
+      ['a', 2],
+      ['b', 1],
+      [undefined, 1],
+    ]);
   });
 });

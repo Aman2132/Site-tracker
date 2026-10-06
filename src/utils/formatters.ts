@@ -31,6 +31,14 @@ export function formatBatteryPercent(batteryFraction: number | undefined): strin
   return `${Math.round(batteryFraction * 100)}%`;
 }
 
+/** Device-local time of day, e.g. "9:05 am". */
+export function formatClockTime(epochMs: number): string {
+  const date = new Date(epochMs);
+  const hour = date.getHours();
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${String(date.getMinutes()).padStart(2, '0')} ${hour < 12 ? 'am' : 'pm'}`;
+}
+
 export function initials(fullName: string): string {
   return fullName
     .split(' ')

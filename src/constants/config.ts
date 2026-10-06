@@ -122,6 +122,22 @@ export const LOCAL_MEDIA = {
   maxTaskChars: 60,
 };
 
+/** Small previews uploaded next to each photo, so the admin dashboard's gallery stays light. */
+export const THUMBNAIL = {
+  /** Width in px; height follows the photo's aspect. */
+  widthPx: 400,
+  jpegQuality: 0.7,
+};
+
+/** The Camera screen's "what are you shooting" label. */
+export const CAPTURE_TASK = {
+  /** Used until the person types one, and when they clear it. */
+  defaultLabel: 'General',
+  maxChars: 60,
+  /** Recently used labels offered as one-tap chips. */
+  recentCount: 5,
+};
+
 /** Simulated network latency for the mock api/ layer, so loading states are real. */
 export const MOCK_NETWORK_DELAY_MS = 400;
 

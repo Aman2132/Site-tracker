@@ -14,6 +14,29 @@ export function newLocalPhotoId(
   return `local-${takenAt}-${suffix}`;
 }
 
+/**
+ * The size a photo is shown at. The sensor is landscape, so VisionCamera reports
+ * an upright phone photo as e.g. 4032x3024 with a landscape-* orientation (an
+ * EXIF rotation, not rotated pixels) — swap those, so portrait shots read as portrait.
+ */
+export function displaySize(
+  width: number,
+  height: number,
+  orientation: string
+): { width: number; height: number } {
+  return orientation.startsWith('landscape') ? { width: height, height: width } : { width, height };
+}
+
+/**
+ * How many of these captures belong to each site, in first-seen order. The
+ * key is the site id, or undefined for captures made while not checked in.
+ */
+export function countBySite(photos: Photo[]): Map<string | undefined, number> {
+  const counts = new Map<string | undefined, number>();
+  for (const photo of photos) counts.set(photo.siteId, (counts.get(photo.siteId) ?? 0) + 1);
+  return counts;
+}
+
 const LOCAL_ID = /^local-(\d+)-([a-z0-9]+)$/;
 
 /** Characters Android/iOS file systems reject, plus `_`, which separates the name's fields. */

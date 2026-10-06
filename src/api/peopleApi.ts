@@ -29,6 +29,8 @@ interface LivePosition {
   battery?: number;
   paused?: boolean;
   kind?: ActivityKind;
+  /** Site the person is checked in at; null/absent when checked out. */
+  siteId?: string | null;
 }
 
 const STALE_AFTER_MS = 3 * 60_000;
@@ -146,7 +148,7 @@ export function subscribeToCrew(
 }
 
 /** Reports the signed-in worker's own position. Fire-and-forget from the caller's side. */
-export async function reportPosition(personId: string, fix: TrackedFix): Promise<void> {
+export async function reportPosition(personId: string, fix: TrackedFix, siteId?: string): Promise<void> {
   await update(ref(rtdb, `positions/${personId}`), {
     lat: fix.lat,
     lng: fix.lng,
@@ -154,6 +156,7 @@ export async function reportPosition(personId: string, fix: TrackedFix): Promise
     kind: fix.kind,
     // Left as-is when unknown, rather than overwritten with a guess.
     ...(fix.battery != null ? { battery: fix.battery } : {}),
+    ...(siteId ? { siteId } : {}),
     lastFixAt: serverTimestamp(),
   });
 }
@@ -161,6 +164,11 @@ export async function reportPosition(personId: string, fix: TrackedFix): Promise
 /** Marks the worker paused/resumed without waiting for the next GPS fix. */
 export async function reportPauseState(personId: string, paused: boolean): Promise<void> {
   await update(ref(rtdb, `positions/${personId}`), { paused });
+}
+
+/** Where the person is checked in right now (null once checked out), so the dashboard can filter the live map by site. */
+export async function reportCheckedInSite(personId: string, siteId: string | null): Promise<void> {
+  await update(ref(rtdb, `positions/${personId}`), { siteId });
 }
 
 /** Saves this device's Expo push token so a future server-side notifier can reach it. */
