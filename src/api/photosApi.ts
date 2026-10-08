@@ -57,7 +57,9 @@ export async function fetchPhotos(personId?: string): Promise<Photo[]> {
 async function uploadThumbnail(photo: Photo, thumbUri: string): Promise<string> {
   const body = await (await fetch(thumbUri)).arrayBuffer();
   const path = `${photo.personId}/${photo.id}_thumb.jpg`;
-  const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(path, body, { contentType: 'image/jpeg', upsert: true });
+  const { error } = await supabase.storage
+    .from(PHOTOS_BUCKET)
+    .upload(path, body, { contentType: 'image/jpeg', upsert: true });
   if (error) throw error;
   return supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
 }
@@ -105,6 +107,7 @@ export async function uploadPhotos(photos: Photo[], thumbUris: Record<string, st
       ...(photo.width != null && photo.height != null ? { width: photo.width, height: photo.height } : {}),
       ...(thumbUrl ? { thumbUrl } : {}),
       task: photo.task,
+      ...(photo.note ? { note: photo.note } : {}),
       mediaType: photo.mediaType ?? 'photo',
       // Firestore rejects `undefined` field values outright, so only send a
       // duration when there is one (photos have none).

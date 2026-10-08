@@ -30,9 +30,10 @@ the thumbnail first.
 
 ## ❗ Other things that will bite me
 
-- 🔒 **Today photo deletion is blocked in the rules.** `firestore.rules` has
-  `allow update, delete: if false` on `photos`. It must be changed (owner only)
-  before any delete can work.
+- 🔒 **Owner delete is allowed in the rules (since 2026-10-08)** — `allow delete:
+  if isOwner()` on `photos`. The admin dashboard deletes through
+  `deletePhotos` in its `src/lib/admin.ts`, files first, record last. Anything
+  else that deletes photo records must do the same.
 - 🔑 **Deleting files needs a server or Worker with delete rights** to the file
   store. Phones and the dashboard browser must **not** hold delete keys.
 - 📋 **Delete the file first, then the record.** If the file delete fails, keep
@@ -48,7 +49,7 @@ the thumbnail first.
 
 ## ✅ Checklist for when I build it
 
-- [ ] Rules updated so only an owner can delete a photo record
+- [x] Rules updated so only an owner can delete a photo record (dashboard, 2026-10-08)
 - [ ] Server / Worker deletes the **original** file
 - [ ] Server / Worker deletes the **thumbnail** file
 - [ ] Server / Worker deletes the **Firestore record**

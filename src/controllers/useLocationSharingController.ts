@@ -26,7 +26,9 @@ export function useLocationSharingController() {
     if (!workerId) return;
     setLocationUpdateHandler(fix => {
       updatePersonPosition(workerId, fix);
-      reportPosition(workerId, fix, siteId).catch(error => console.warn('[sharing] position report failed —', error));
+      reportPosition(workerId, fix, siteId).catch(error =>
+        console.warn('[sharing] position report failed —', error)
+      );
 
       if (fix.battery == null) return;
       const isLow = fix.battery <= BATTERY.lowLevel;

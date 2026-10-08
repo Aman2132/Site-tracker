@@ -47,3 +47,12 @@ export function initials(fullName: string): string {
     .slice(0, 2)
     .toUpperCase();
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "Today, 9:05 am" or "7 Oct, 9:05 am" (device-local). */
+export function formatDayTime(epochMs: number, now: number = Date.now()): string {
+  const date = new Date(epochMs);
+  const today = new Date(now).toDateString() === date.toDateString();
+  return `${today ? 'Today' : `${date.getDate()} ${MONTHS[date.getMonth()]}`}, ${formatClockTime(epochMs)}`;
+}

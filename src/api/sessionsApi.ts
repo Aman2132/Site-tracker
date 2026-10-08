@@ -13,6 +13,10 @@ export async function openSession(personId: string, siteId: string, start: numbe
 }
 
 /** Closes a session (check-out or pause). firestore.rules only lets the owner of the session do this, once. */
-export async function closeSession(sessionId: string, end: number, endReason: SessionEndReason): Promise<void> {
+export async function closeSession(
+  sessionId: string,
+  end: number,
+  endReason: SessionEndReason
+): Promise<void> {
   await updateDoc(doc(firestore, SESSIONS_COLLECTION, sessionId), { end, endReason });
 }

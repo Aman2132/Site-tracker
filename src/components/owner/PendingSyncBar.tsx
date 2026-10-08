@@ -19,8 +19,8 @@ export default function PendingSyncBar({ pendingCount, syncing, syncError, onSyn
       <View style={styles.bar}>
         <Ionicons name="time-outline" size={13} color={colors.warningText} />
         <Text style={styles.text}>
-          {pendingCount} photo{pendingCount > 1 ? 's' : ''} of yours {pendingCount > 1 ? 'are' : 'is'} saved on
-          this phone, not uploaded yet
+          {pendingCount} photo{pendingCount > 1 ? 's' : ''} of yours {pendingCount > 1 ? 'are' : 'is'} saved
+          on this phone, not uploaded yet
         </Text>
         <TouchableOpacity
           style={[styles.button, syncing && styles.buttonBusy]}
@@ -67,5 +67,10 @@ const styles = StyleSheet.create({
   },
   buttonBusy: { opacity: 0.7 },
   buttonText: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 12 },
-  error: { fontFamily: fontFamily.medium, color: colors.dangerText, fontSize: 12, paddingHorizontal: spacing.xs },
+  error: {
+    fontFamily: fontFamily.medium,
+    color: colors.dangerText,
+    fontSize: 12,
+    paddingHorizontal: spacing.xs,
+  },
 });

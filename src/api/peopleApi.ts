@@ -1,5 +1,23 @@
-import { onValue, ref, serverTimestamp, update } from 'firebase/database';
-import { collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  equalTo,
+  onValue,
+  orderByChild,
+  query as dbQuery,
+  ref,
+  serverTimestamp,
+  update,
+} from 'firebase/database';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 
 import { firestore, rtdb } from './firebaseClient';
 
@@ -169,6 +187,41 @@ export async function reportPauseState(personId: string, paused: boolean): Promi
 /** Where the person is checked in right now (null once checked out), so the dashboard can filter the live map by site. */
 export async function reportCheckedInSite(personId: string, siteId: string | null): Promise<void> {
   await update(ref(rtdb, `positions/${personId}`), { siteId });
+}
+
+/**
+ * Everyone assigned to a site (people/{uid}.siteIds contains it): one small
+ * query, not the whole roster, so a worker's phone reads only its own crew.
+ */
+export async function fetchSiteCrew(siteId: string): Promise<PersonProfile[]> {
+  const snapshot = await getDocs(
+    query(collection(firestore, 'people'), where('siteIds', 'array-contains', siteId))
+  );
+  return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<PersonProfile, 'id'>) }));
+}
+
+/** Live check-in state of one person, as the crew card needs it. */
+export interface SitePresence {
+  paused?: boolean;
+  lastFixAt?: number;
+}
+
+/**
+ * Live positions of only the people checked in at `siteId` (positions whose
+ * siteId matches). database.rules.json indexes siteId so the server does the
+ * filtering; without the index deployed the SDK downloads every position and
+ * filters on the phone. Returns the unsubscribe function.
+ */
+export function subscribeToSitePresence(
+  siteId: string,
+  onChange: (presence: Record<string, SitePresence>) => void,
+  onError: (error: Error) => void
+): () => void {
+  return onValue(
+    dbQuery(ref(rtdb, 'positions'), orderByChild('siteId'), equalTo(siteId)),
+    snapshot => onChange((snapshot.val() as Record<string, SitePresence>) ?? {}),
+    onError
+  );
 }
 
 /** Saves this device's Expo push token so a future server-side notifier can reach it. */

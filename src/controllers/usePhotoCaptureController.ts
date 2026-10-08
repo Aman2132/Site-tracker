@@ -101,6 +101,7 @@ export function usePhotoCaptureController() {
   const [lastSavedIsPrecise, setLastSavedIsPrecise] = useState(true);
   /** Smoothed + rounded for display only; the raw fix used for geotagging lives in liveFixRef. */
   const [displayAccuracy, setDisplayAccuracy] = useState<number | null>(null);
+  const [lastCaptureId, setLastCaptureId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingMs, setRecordingMs] = useState(0);
@@ -156,6 +157,7 @@ export function usePhotoCaptureController() {
       const photo = { ...capture, uri: await keepFileLogged(kind, capture) };
       await addLocalPhoto(photo);
       addPhoto(photo);
+      setLastCaptureId(photo.id);
       await saveToGalleryLogged(kind, photo.uri, canSaveToGallery.current, markGranted);
     },
     [addPhoto, markGranted]
@@ -330,6 +332,8 @@ export function usePhotoCaptureController() {
     recordingMs,
     lastSavedLabel,
     lastSavedIsPrecise,
+    /** Id of the newest capture, so the camera can offer to add a note to it. */
+    lastCaptureId,
     clearLastSavedLabel,
     liveAccuracy: displayAccuracy,
     /** False until the first real GPS fix arrives; the shutter stays locked until then. */

@@ -104,10 +104,11 @@ service cloud.firestore {
     // within that limit, so a worker's query must carry
     // where('personId','==',uid) — an unfiltered list from a worker is
     // rejected outright rather than silently filtered. A worker can only
-    // create photos attributed to themselves, and nothing is ever
-    // edited/deleted from the client — it's meant to be an audit trail.
+    // create photos attributed to themselves, and a record is never edited.
+    // Only an owner may delete one (from the admin dashboard, which removes the
+    // files first: deletePhotos in the dashboard's src/lib/admin.ts).
     //
-    // 🚨🚨🚨 READ BEFORE ALLOWING DELETE ON THIS COLLECTION 🚨🚨🚨
+    // 🚨🚨🚨 READ BEFORE CHANGING DELETE ON THIS COLLECTION 🚨🚨🚨
     // ❗ A photo is TWO files + ONE record. Whatever deletes a photo must delete
     //    the file, the _thumb.jpg thumbnail AND this Firestore record (it holds
     //    the path / URL). Delete only one and you leave a BROKEN IMAGE or an
@@ -116,7 +117,35 @@ service cloud.firestore {
     match /photos/{photoId} {
       allow read: if isOwner() || (signedIn() && resource.data.personId == request.auth.uid);
       allow create: if isActive() && request.resource.data.personId == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isOwner();
+    }
+
+    // Inventory: one doc per item received at a site. The crew log what
+    // arrives (only as themselves, only for a site they're assigned to) and
+    // can never change or delete it afterwards; an owner can edit or delete
+    // any entry from the admin dashboard. A worker reads only their own, so
+    // their query must filter on personId (like photos). `resource == null`
+    // lets the phone check whether an entry saved offline already reached
+    // the server (a get of a doc that doesn't exist yet).
+    function validInventory(data) {
+      return data.siteId is string && data.siteId.size() > 0
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
+        && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 20
+        && data.receivedAt is number
+        && data.get('note', '') is string && data.get('note', '').size() <= 300;
+    }
+    match /inventory/{entryId} {
+      allow read: if isOwner()
+        || (signedIn() && (resource == null || resource.data.personId == request.auth.uid));
+      allow create: if isActive()
+        && request.resource.data.personId == request.auth.uid
+        && (isOwner() || request.resource.data.siteId in me().get('siteIds', []))
+        && validInventory(request.resource.data)
+        && request.resource.data.keys().hasOnly(['personId', 'personName', 'siteId', 'name', 'quantity', 'unit', 'note', 'receivedAt', 'createdAt']);
+      allow update: if isOwner() && validInventory(request.resource.data);
+      allow delete: if isOwner();
     }
 
     // Activity feed: shared, append-only.

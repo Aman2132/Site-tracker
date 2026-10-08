@@ -6,6 +6,7 @@ import { colors, gradients } from '@/constants/theme';
 import CameraScreen from '@/screens/common/CameraScreen';
 import ProfileScreen from '@/screens/common/ProfileScreen';
 import HomeScreen from '@/screens/worker/HomeScreen';
+import InventoryScreen from '@/screens/worker/InventoryScreen';
 import QueueScreen from '@/screens/worker/QueueScreen';
 import { WorkerTabParamList } from '@/types/navigation';
 
@@ -15,6 +16,7 @@ const ICONS = {
   Home: 'home',
   Camera: 'camera',
   MyPhotos: 'images',
+  Items: 'cube',
   Profile: 'person-circle',
 } as const;
 
@@ -32,6 +34,7 @@ export default function WorkerTabNavigator() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Camera" component={CameraScreen} options={{ tabBarStyle: { display: 'none' } }} />
       <Tab.Screen name="MyPhotos" component={QueueScreen} options={{ title: 'Photos' }} />
+      <Tab.Screen name="Items" component={InventoryScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

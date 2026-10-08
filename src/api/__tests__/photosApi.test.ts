@@ -150,14 +150,21 @@ describe('uploadPhotos', () => {
   it('records the site, size and preview for a new capture', async () => {
     const { upload } = mockBucket();
 
-    await uploadPhotos([{ ...pending, siteId: 'site-1', width: 3024, height: 4032 }], { 'local-1': 'file:///cache/t.jpg' });
+    await uploadPhotos([{ ...pending, siteId: 'site-1', width: 3024, height: 4032 }], {
+      'local-1': 'file:///cache/t.jpg',
+    });
 
     expect(upload).toHaveBeenCalledWith('worker-1/local-1_thumb.jpg', expect.anything(), {
       contentType: 'image/jpeg',
       upsert: true,
     });
     const [, doc] = (addDoc as jest.Mock).mock.calls[0];
-    expect(doc).toMatchObject({ siteId: 'site-1', width: 3024, height: 4032, thumbUrl: 'https://cdn.example/a.jpg' });
+    expect(doc).toMatchObject({
+      siteId: 'site-1',
+      width: 3024,
+      height: 4032,
+      thumbUrl: 'https://cdn.example/a.jpg',
+    });
   });
 
   it('sends none of site, size or preview for a capture without them', async () => {
@@ -167,6 +174,16 @@ describe('uploadPhotos', () => {
 
     const [, doc] = (addDoc as jest.Mock).mock.calls[0];
     for (const field of ['siteId', 'width', 'height', 'thumbUrl']) expect(doc).not.toHaveProperty(field);
+  });
+
+  it('writes the note as `note`, and omits it when there is none', async () => {
+    mockBucket();
+
+    await uploadPhotos([{ ...pending, note: 'Pouring slab' }, pending]);
+
+    const calls = (addDoc as jest.Mock).mock.calls;
+    expect(calls[0][1]).toMatchObject({ note: 'Pouring slab' });
+    expect(calls[1][1]).not.toHaveProperty('note');
   });
 
   it('treats a record saved before video existed as a photo', async () => {

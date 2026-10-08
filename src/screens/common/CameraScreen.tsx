@@ -13,12 +13,14 @@ import CameraZoomControl from '@/components/worker/CameraZoomControl';
 import CaptureToast from '@/components/worker/CaptureToast';
 import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
+import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
 import RecordingBadge from '@/components/worker/RecordingBadge';
 import TaskEditorSheet from '@/components/worker/TaskEditorSheet';
 import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { useCameraController } from '@/controllers/useCameraController';
 import { useCaptureTaskController } from '@/controllers/useCaptureTaskController';
+import { usePhotoNoteController } from '@/controllers/usePhotoNoteController';
 
 /**
  * Camera tab (workers and owners). Camera permission is settled first; the
@@ -64,10 +66,19 @@ function CameraView() {
     recordingMs,
     lastSavedLabel,
     lastSavedIsPrecise,
+    lastCaptureId,
     clearLastSavedLabel,
     liveAccuracy,
     hasFix,
   } = useCameraController(task);
+  const {
+    target: noteTarget,
+    editing,
+    visible: noteVisible,
+    openNote,
+    closeNote,
+    saveNote,
+  } = usePhotoNoteController(lastCaptureId);
   const insets = useSafeAreaInsets();
   const [editingTask, setEditingTask] = useState(false);
   const navigation = useNavigation();
@@ -172,7 +183,27 @@ function CameraView() {
         warn={!lastSavedIsPrecise}
       />
 
+      {noteTarget && !isRecording && (
+        <TouchableOpacity
+          style={styles.noteButton}
+          onPress={() => openNote(noteTarget.id)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Add a note to the last capture"
+        >
+          <Ionicons name="create-outline" size={18} color={colors.white} />
+          <Text style={styles.noteButtonText}>{noteTarget.note ? 'Edit note' : 'Add note'}</Text>
+        </TouchableOpacity>
+      )}
+
       {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
+
+      <PhotoNoteSheet
+        visible={noteVisible}
+        note={editing?.note ?? ''}
+        onSave={saveNote}
+        onClose={closeNote}
+      />
 
       <TaskEditorSheet
         visible={editingTask}
@@ -230,6 +261,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 3,
   },
   taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
+  noteButton: {
+    position: 'absolute',
+    right: spacing.xl,
+    bottom: 200,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.glass,
+  },
+  noteButtonText: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 14 },
   accuracyBar: { position: 'absolute', alignSelf: 'center' },
   controls: {
     position: 'absolute',

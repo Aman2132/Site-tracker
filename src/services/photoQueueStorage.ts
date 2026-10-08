@@ -80,6 +80,21 @@ export function addLocalPhoto(photo: Photo): Promise<void> {
   });
 }
 
+/** Sets (or, when empty, removes) one capture's note in its owner's list. Never rejects. */
+export function setLocalPhotoNote(personId: string, id: string, note: string): Promise<void> {
+  return serialized(async () => {
+    const own = await readList(keyFor(personId));
+    await writeList(
+      personId,
+      own.map(photo => {
+        if (photo.id !== id) return photo;
+        const { note: _old, ...rest } = photo;
+        return note ? { ...rest, note } : rest;
+      })
+    );
+  });
+}
+
 /** Marks the given captures synced in their owner's list. Never rejects. */
 export function markLocalPhotosSynced(personId: string, ids: string[]): Promise<void> {
   const synced = new Set(ids);

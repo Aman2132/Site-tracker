@@ -18,7 +18,10 @@ jest.mock('@/api/peopleApi', () => ({
   reportCheckedInSite: jest.fn(async () => undefined),
   reportPauseState: jest.fn(async () => undefined),
 }));
-jest.mock('@/api/sessionsApi', () => ({ openSession: jest.fn(), closeSession: jest.fn(async () => undefined) }));
+jest.mock('@/api/sessionsApi', () => ({
+  openSession: jest.fn(),
+  closeSession: jest.fn(async () => undefined),
+}));
 jest.mock('@/api/sitesApi', () => ({ fetchSitesByIds: jest.fn() }));
 jest.mock('@/services/activityRecognitionService', () => ({
   requestActivityRecognitionPermission: jest.fn(async () => true),

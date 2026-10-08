@@ -1,5 +1,7 @@
 import { Photo } from '@/types/domain';
 import {
+  autoSyncable,
+  cleanNote,
   captureFileName,
   countBySite,
   displaySize,
@@ -145,5 +147,34 @@ describe('countBySite', () => {
       ['b', 1],
       [undefined, 1],
     ]);
+  });
+});
+
+describe('cleanNote', () => {
+  it('trims and caps the length', () => {
+    expect(cleanNote('  pouring slab  ', 50)).toBe('pouring slab');
+    expect(cleanNote('abcdef', 3)).toBe('abc');
+    expect(cleanNote('ab  cd', 3)).toBe('ab');
+  });
+
+  it('turns whitespace-only into empty, meaning no note', () => {
+    expect(cleanNote('   ', 50)).toBe('');
+  });
+});
+
+describe('autoSyncable', () => {
+  const list = [
+    photo({ id: 'a', personId: 'worker-1' }),
+    photo({ id: 'b', personId: 'worker-1', synced: true }),
+    photo({ id: 'c', personId: 'other' }),
+    photo({ id: 'd', personId: 'worker-1' }),
+  ];
+
+  it("is this person's unsynced captures only", () => {
+    expect(autoSyncable(list, 'worker-1', null).map(p => p.id)).toEqual(['a', 'd']);
+  });
+
+  it('holds back the capture whose note is being typed', () => {
+    expect(autoSyncable(list, 'worker-1', 'a').map(p => p.id)).toEqual(['d']);
   });
 });

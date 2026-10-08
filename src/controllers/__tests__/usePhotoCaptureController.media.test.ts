@@ -36,7 +36,14 @@ interface Shot {
   orientation: string;
 }
 
-const photoCamera = { takePhoto: jest.fn(async () => ({ path: '/tmp/shot.jpg', width: 4032, height: 3024, orientation: 'landscape-left' })) } as never;
+const photoCamera = {
+  takePhoto: jest.fn(async () => ({
+    path: '/tmp/shot.jpg',
+    width: 4032,
+    height: 3024,
+    orientation: 'landscape-left',
+  })),
+} as never;
 
 /** Pushes a fix through the controller's GPS watch. */
 function primeFix(fix: GeoFix) {

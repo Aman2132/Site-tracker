@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+import { AppState } from 'react-native';
 
 import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
-import { HAS_FIREBASE_CONFIG } from '@/constants/config';
+import { AUTO_SYNC, HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { SEED_PHOTOS } from '@/constants/mockData';
-import { createThumbnail } from '@/services/thumbnailService';
 import { listGalleryCaptures } from '@/services/mediaLibraryService';
 import { requestGallerySavePermission } from '@/services/permissionsService';
 import { loadLocalPhotos, markLocalPhotosSynced, saveLocalPhotos } from '@/services/photoQueueStorage';
+import { createThumbnail } from '@/services/thumbnailService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { selectPendingPhotos, usePhotoStore } from '@/store/usePhotoStore';
 import { Photo } from '@/types/domain';
-import { countBySite, mergeById, mergePhotoLists, photoFromCaptureFileName } from '@/utils/photos';
+import {
+  autoSyncable,
+  countBySite,
+  mergeById,
+  mergePhotoLists,
+  photoFromCaptureFileName,
+} from '@/utils/photos';
 
 /**
  * This person's captures found in the gallery album — after a reinstall,
@@ -27,6 +34,9 @@ async function recoverFromGallery(personId: string): Promise<Photo[]> {
     .map(photoFromCaptureFileName)
     .filter((photo): photo is Photo => photo !== null && photo.personId === personId);
 }
+
+/** Ids being uploaded right now. Module-level, so every screen using this controller shares one guard. */
+const inFlight = new Set<string>();
 
 /** A small preview for each pending photo (videos get none), keyed by photo id. A failed one is just skipped. */
 async function makeThumbnails(photos: Photo[]): Promise<Record<string, string>> {
@@ -56,15 +66,17 @@ export function usePhotoQueueController() {
   const photos = usePhotoStore(state => state.photos);
   const loadedFor = usePhotoStore(state => state.loadedFor);
   const setPhotos = usePhotoStore(state => state.setPhotos);
-  const markAllSynced = usePhotoStore(state => state.markAllSynced);
   const pendingPhotos = usePhotoStore(selectPendingPhotos);
   const profile = useAuthStore(state => state.profile);
   const workerName = profile?.name;
   const personId = profile?.id;
   const isOwner = profile?.appRole === 'owner';
 
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const syncStatus = usePhotoStore(state => state.syncStatus);
+  const syncing = Object.values(syncStatus).includes('syncing');
+  const syncError = Object.values(syncStatus).includes('failed')
+    ? 'Upload failed — photos are still saved. Check your connection; it retries automatically, or tap Sync.'
+    : null;
 
   useEffect(() => {
     if (!personId || loadedFor === personId) return;
@@ -90,38 +102,91 @@ export function usePhotoQueueController() {
     })();
   }, [loadedFor, setPhotos, isOwner, personId]);
 
-  const syncNow = useCallback(async () => {
-    if (pendingPhotos.length === 0 || syncing || !personId) return;
-    setSyncError(null);
-    setSyncing(true);
-    try {
-      // Without a real Firebase project there's nowhere to upload to — just
-      // flip the local queue to synced, same as the rest of the static mode.
-      if (HAS_FIREBASE_CONFIG) await uploadPhotos(pendingPhotos, await makeThumbnails(pendingPhotos));
-      markAllSynced();
-      await markLocalPhotosSynced(
-        personId,
-        pendingPhotos.map(photo => photo.id)
-      );
+  /**
+   * Uploads these captures one at a time, each marked synced the moment it
+   * lands (so a failure part-way never re-uploads the ones already done).
+   * Anything already uploading — from a tap, the background retry, or another
+   * screen using this controller — is skipped, so a photo is never sent twice.
+   */
+  const syncPhotos = useCallback(
+    async (candidates: Photo[]) => {
+      if (!personId) return;
+      const { setSyncStatus, markSynced } = usePhotoStore.getState();
+      const mine = candidates.filter(photo => !inFlight.has(photo.id));
+      mine.forEach(photo => {
+        inFlight.add(photo.id);
+        setSyncStatus(photo.id, 'syncing');
+      });
+      const uploaded: Photo[] = [];
+      try {
+        for (const queued of mine) {
+          // Read again: a note may have been added since the list was built.
+          const photo = usePhotoStore.getState().photos.find(p => p.id === queued.id) ?? queued;
+          // Without a real Firebase project there's nowhere to upload to — just
+          // flip the local queue to synced, same as the rest of the static mode.
+          if (HAS_FIREBASE_CONFIG) await uploadPhotos([photo], await makeThumbnails([photo]));
+          markSynced([photo.id]);
+          await markLocalPhotosSynced(personId, [photo.id]);
+          setSyncStatus(photo.id, null);
+          uploaded.push(photo);
+        }
+      } catch (error) {
+        // Still safe on disk; the failed one is flagged and retried later.
+        console.warn('[photos] sync failed —', error);
+      } finally {
+        // The first one not uploaded is the one that failed; the rest go back to queued.
+        const done = new Set(uploaded.map(photo => photo.id));
+        const failed = mine.find(photo => !done.has(photo.id));
+        mine.forEach(photo => {
+          inFlight.delete(photo.id);
+          if (!done.has(photo.id)) setSyncStatus(photo.id, photo === failed ? 'failed' : null);
+        });
+      }
       if (HAS_FIREBASE_CONFIG) {
         // One entry per site, so the dashboard can file each under the right site.
-        for (const [siteId, count] of countBySite(pendingPhotos)) {
-          logEvent(`${count} photo${count > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`, 'info', {
-            type: 'upload',
-            personId,
-            siteId,
-          }).catch(error => console.warn('[photos] activity log failed —', error));
+        for (const [siteId, count] of countBySite(uploaded)) {
+          logEvent(
+            `${count} photo${count > 1 ? 's' : ''} uploaded from ${workerName ?? 'a worker'}`,
+            'info',
+            {
+              type: 'upload',
+              personId,
+              siteId,
+            }
+          ).catch(error => console.warn('[photos] activity log failed —', error));
         }
       }
-    } catch (error) {
-      // The queue is left untouched, so the photos are still safe on disk and
-      // the worker can retry — but they need to know it didn't go through.
-      console.warn('[photos] sync failed —', error);
-      setSyncError('Upload failed — photos are still saved. Check your connection and tap Sync again.');
-    } finally {
-      setSyncing(false);
-    }
-  }, [pendingPhotos, markAllSynced, workerName, syncing, personId]);
+    },
+    [workerName, personId]
+  );
 
-  return { photos, pendingCount: pendingPhotos.length, syncNow, syncing, syncError };
+  const syncNow = useCallback(() => syncPhotos(selectPendingPhotos(usePhotoStore.getState())), [syncPhotos]);
+
+  const syncOne = useCallback(
+    (id: string) =>
+      syncPhotos(usePhotoStore.getState().photos.filter(photo => photo.id === id && !photo.synced)),
+    [syncPhotos]
+  );
+
+  // Background upload: shortly after a capture (leaving time to add a note),
+  // again on a timer while anything is unsynced (connectivity returning), and
+  // the moment the app comes back to the foreground.
+  const pendingKey = pendingPhotos.map(photo => photo.id).join(',');
+  useEffect(() => {
+    if (!personId || loadedFor !== personId || !pendingKey) return;
+    const run = () => {
+      const { photos: all, noteEditingId } = usePhotoStore.getState();
+      syncPhotos(autoSyncable(all, personId, noteEditingId));
+    };
+    const first = setTimeout(run, AUTO_SYNC.graceMs);
+    const retry = setInterval(run, AUTO_SYNC.retryMs);
+    const appState = AppState.addEventListener('change', state => state === 'active' && run());
+    return () => {
+      clearTimeout(first);
+      clearInterval(retry);
+      appState.remove();
+    };
+  }, [pendingKey, personId, loadedFor, syncPhotos]);
+
+  return { photos, pendingCount: pendingPhotos.length, syncNow, syncOne, syncing, syncError, syncStatus };
 }

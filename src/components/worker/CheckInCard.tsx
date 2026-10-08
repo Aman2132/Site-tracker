@@ -57,7 +57,13 @@ export default function CheckInCard({ sites, loading, busy, error, onCheckIn, on
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.xl - 1, gap: spacing.md, ...shadow.sm },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.xl - 1,
+    gap: spacing.md,
+    ...shadow.sm,
+  },
   title: { fontFamily: fontFamily.extrabold, fontSize: 17, color: colors.text },
   body: { fontFamily: fontFamily.regular, fontSize: 13, lineHeight: 19, color: colors.textMuted },
   spinner: { paddingVertical: spacing.lg },

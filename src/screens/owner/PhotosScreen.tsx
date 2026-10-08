@@ -48,7 +48,12 @@ export default function PhotosScreen() {
     <ScreenContainer padded={false}>
       <ScreenTitle>Photos</ScreenTitle>
       {pendingCount > 0 && (
-        <PendingSyncBar pendingCount={pendingCount} syncing={syncing} syncError={syncError} onSync={syncNow} />
+        <PendingSyncBar
+          pendingCount={pendingCount}
+          syncing={syncing}
+          syncError={syncError}
+          onSync={syncNow}
+        />
       )}
       {people.length > 0 && (
         <PersonFilterChips people={people} selectedId={selectedPersonId} onSelect={setSelectedPersonId} />

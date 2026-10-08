@@ -12,7 +12,13 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   }),
 }));
 
-const shift: ActiveShift = { siteId: 's1', siteName: 'Tower B', checkedInAt: 5, sessionId: 'x', paused: false };
+const shift: ActiveShift = {
+  siteId: 's1',
+  siteName: 'Tower B',
+  checkedInAt: 5,
+  sessionId: 'x',
+  paused: false,
+};
 
 describe('shiftStorage', () => {
   beforeEach(() => mockDisk.clear());

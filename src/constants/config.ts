@@ -122,6 +122,14 @@ export const LOCAL_MEDIA = {
   maxTaskChars: 60,
 };
 
+/** Home screen "Crew at this site" card. */
+export const SITE_CREW = {
+  /** A checked-in person with no position fix for this long is shown as "no signal" rather than here. */
+  signalLostAfterMs: 15 * 60_000,
+  /** How often the card re-checks that, since a silent phone sends nothing to react to. */
+  refreshMs: 60_000,
+};
+
 /** Small previews uploaded next to each photo, so the admin dashboard's gallery stays light. */
 export const THUMBNAIL = {
   /** Width in px; height follows the photo's aspect. */
@@ -136,6 +144,19 @@ export const CAPTURE_TASK = {
   maxChars: 60,
   /** Recently used labels offered as one-tap chips. */
   recentCount: 5,
+};
+
+/** The optional free-text note a person can add to a capture ("what I am doing"). */
+export const PHOTO_NOTE = {
+  maxChars: 500,
+};
+
+/** Background upload of new captures. */
+export const AUTO_SYNC = {
+  /** Wait after a capture before uploading, so a note can be added first (a synced photo's record is never edited). */
+  graceMs: 20000,
+  /** While anything is unsynced, try again this often (covers connectivity coming back). */
+  retryMs: 30000,
 };
 
 /** Simulated network latency for the mock api/ layer, so loading states are real. */
@@ -215,3 +236,18 @@ export const SUPABASE_CONFIG = {
 } as const;
 
 export const HAS_SUPABASE_CONFIG = SUPABASE_CONFIG.url.length > 0;
+
+/** Items tab: what the crew receive at a site. */
+export const INVENTORY = {
+  /** Unit chips, in the order shown. "Other" (typed) is always offered after these. */
+  units: ['pcs', 'bags', 'kg', 'tonne', 'm', 'ft', 'sq ft', 'litre', 'box', 'roll', 'set'],
+  maxNameChars: 80,
+  maxUnitChars: 20,
+  maxNoteChars: 300,
+  /** Largest quantity accepted; anything bigger is almost certainly a typo. */
+  maxQuantity: 1_000_000,
+  /** Past item names offered as one-tap chips. */
+  suggestionCount: 6,
+  /** While anything is waiting to sync, retry this often. */
+  retryMs: 30000,
+};

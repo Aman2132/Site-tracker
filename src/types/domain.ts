@@ -154,6 +154,8 @@ export interface Photo {
   /** Stamped at capture time so attribution survives a rename/deactivation. Absent on photos taken before this field existed. */
   personName?: string;
   task: string;
+  /** Optional free-text note ("what I am doing"), trimmed, max PHOTO_NOTE.maxChars. Absent when empty. Written to Firestore as `note`. */
+  note?: string;
   synced: boolean;
   /** Site the person was checked in at when this was captured. Absent when not checked in. */
   siteId?: string;
@@ -183,3 +185,31 @@ export interface LocationPermissionState {
   granted: boolean;
   background: boolean;
 }
+
+/**
+ * One delivery of one item received at a site (`inventory/{id}`). Crew create
+ * these from the Items tab and can never change them; an owner can edit or
+ * delete any from the admin dashboard, which stamps `editedAt`.
+ */
+export interface InventoryEntry {
+  id: string;
+  personId: string;
+  /** Stamped at entry time, like Photo.personName. */
+  personName: string;
+  siteId: string;
+  /** Item name as typed, e.g. "Cement (OPC 53)". */
+  name: string;
+  quantity: number;
+  /** One of INVENTORY.units or a custom one typed under "Other". */
+  unit: string;
+  note?: string;
+  /** When it was received (entry time on the phone), epoch ms. */
+  receivedAt: number;
+  /** Set by the admin dashboard when an owner changes the entry. */
+  editedAt?: number;
+  /** True while the phone has saved it but the server hasn't confirmed it yet. Never stored. */
+  pending?: boolean;
+}
+
+/** What the crew fill in; the rest is stamped by the controller. */
+export type InventoryDraft = Pick<InventoryEntry, 'siteId' | 'name' | 'quantity' | 'unit' | 'note'>;

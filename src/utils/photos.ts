@@ -37,6 +37,19 @@ export function countBySite(photos: Photo[]): Map<string | undefined, number> {
   return counts;
 }
 
+/** A note as stored: trimmed and capped. Empty means "no note". */
+export function cleanNote(input: string, maxChars: number): string {
+  return input.trim().slice(0, maxChars).trim();
+}
+
+/**
+ * What background sync should upload now: this person's unsynced captures,
+ * minus the one whose note is being typed (its record can't be edited once uploaded).
+ */
+export function autoSyncable(photos: Photo[], personId: string, editingId: string | null): Photo[] {
+  return photos.filter(photo => !photo.synced && photo.personId === personId && photo.id !== editingId);
+}
+
 const LOCAL_ID = /^local-(\d+)-([a-z0-9]+)$/;
 
 /** Characters Android/iOS file systems reject, plus `_`, which separates the name's fields. */
