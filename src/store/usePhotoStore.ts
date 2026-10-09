@@ -16,8 +16,10 @@ interface PhotoState {
   loadedFor: string | null;
   /** Per-photo upload state, shared by every screen showing the queue. */
   syncStatus: Record<string, PhotoSyncStatus>;
-  /** The capture whose note is open for typing; background sync leaves it alone. */
-  noteEditingId: string | null;
+  /** Captures whose note/item sheet is open (one, or a batch from the camera tray); background sync leaves them alone. */
+  noteEditingIds: string[];
+  /** This camera visit's captures, shown in the tray and held back from background upload until the camera closes. */
+  trayIds: string[];
   setPhotos: (photos: Photo[], forPersonId: string) => void;
   /** Adds a finished capture (id already assigned — see utils/photos newLocalPhotoId) to the top. */
   addPhoto: (photo: Photo) => void;
@@ -25,8 +27,12 @@ interface PhotoState {
   markSynced: (ids: string[]) => void;
   /** Empty note removes it. */
   setNote: (id: string, note: string) => void;
+  /** Null unlinks. */
+  setInventoryId: (id: string, inventoryId: string | null) => void;
   setSyncStatus: (id: string, status: PhotoSyncStatus | null) => void;
-  setNoteEditingId: (id: string | null) => void;
+  setNoteEditingIds: (ids: string[]) => void;
+  addToTray: (id: string) => void;
+  clearTray: () => void;
   clear: () => void;
 }
 
@@ -35,7 +41,8 @@ export const usePhotoStore = create<PhotoState>(set => ({
   loaded: false,
   loadedFor: null,
   syncStatus: {},
-  noteEditingId: null,
+  noteEditingIds: [],
+  trayIds: [],
   setPhotos: (photos, forPersonId) => set({ photos, loaded: true, loadedFor: forPersonId }),
   addPhoto: photo => set(state => ({ photos: [photo, ...state.photos] })),
   markAllSynced: () =>
@@ -54,13 +61,24 @@ export const usePhotoStore = create<PhotoState>(set => ({
         return note ? { ...rest, note } : rest;
       }),
     })),
+  setInventoryId: (id, inventoryId) =>
+    set(state => ({
+      photos: state.photos.map(photo => {
+        if (photo.id !== id) return photo;
+        const { inventoryId: _old, ...rest } = photo;
+        return inventoryId ? { ...rest, inventoryId } : rest;
+      }),
+    })),
   setSyncStatus: (id, status) =>
     set(state => {
       const { [id]: _old, ...rest } = state.syncStatus;
       return { syncStatus: status ? { ...rest, [id]: status } : rest };
     }),
-  setNoteEditingId: id => set({ noteEditingId: id }),
-  clear: () => set({ photos: [], loaded: false, loadedFor: null, syncStatus: {}, noteEditingId: null }),
+  setNoteEditingIds: ids => set({ noteEditingIds: ids }),
+  addToTray: id => set(state => (state.trayIds.includes(id) ? state : { trayIds: [id, ...state.trayIds] })),
+  clearTray: () => set({ trayIds: [] }),
+  clear: () =>
+    set({ photos: [], loaded: false, loadedFor: null, syncStatus: {}, noteEditingIds: [], trayIds: [] }),
 }));
 
 export const selectPendingPhotos = (state: PhotoState): Photo[] => state.photos.filter(p => !p.synced);

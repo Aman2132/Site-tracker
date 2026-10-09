@@ -19,6 +19,7 @@ import {
   mergePhotoLists,
   photoFromCaptureFileName,
 } from '@/utils/photos';
+import { hasOwnerAccess } from '@/utils/roles';
 
 /**
  * This person's captures found in the gallery album — after a reinstall,
@@ -70,7 +71,7 @@ export function usePhotoQueueController() {
   const profile = useAuthStore(state => state.profile);
   const workerName = profile?.name;
   const personId = profile?.id;
-  const isOwner = profile?.appRole === 'owner';
+  const isOwner = hasOwnerAccess(profile?.appRole);
 
   const syncStatus = usePhotoStore(state => state.syncStatus);
   const syncing = Object.values(syncStatus).includes('syncing');
@@ -175,8 +176,9 @@ export function usePhotoQueueController() {
   useEffect(() => {
     if (!personId || loadedFor !== personId || !pendingKey) return;
     const run = () => {
-      const { photos: all, noteEditingId } = usePhotoStore.getState();
-      syncPhotos(autoSyncable(all, personId, noteEditingId));
+      // Held: anything whose note sheet is open, and the camera tray until the camera closes.
+      const { photos: all, noteEditingIds, trayIds } = usePhotoStore.getState();
+      syncPhotos(autoSyncable(all, personId, [...noteEditingIds, ...trayIds]));
     };
     const first = setTimeout(run, AUTO_SYNC.graceMs);
     const retry = setInterval(run, AUTO_SYNC.retryMs);

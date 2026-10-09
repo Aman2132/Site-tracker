@@ -10,6 +10,7 @@ import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
 import CameraProblemOverlay from '@/components/worker/CameraProblemOverlay';
 import CameraShutterButton from '@/components/worker/CameraShutterButton';
 import CameraZoomControl from '@/components/worker/CameraZoomControl';
+import CaptureTray from '@/components/worker/CaptureTray';
 import CaptureToast from '@/components/worker/CaptureToast';
 import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
@@ -20,6 +21,7 @@ import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { useCameraController } from '@/controllers/useCameraController';
 import { useCaptureTaskController } from '@/controllers/useCaptureTaskController';
+import { useCaptureTrayController } from '@/controllers/useCaptureTrayController';
 import { usePhotoNoteController } from '@/controllers/usePhotoNoteController';
 
 /**
@@ -71,14 +73,18 @@ function CameraView() {
     liveAccuracy,
     hasFix,
   } = useCameraController(task);
+  const { tray } = useCaptureTrayController(lastCaptureId);
   const {
-    target: noteTarget,
     editing,
+    sharedNote,
+    sharedInventoryId,
     visible: noteVisible,
     openNote,
     closeNote,
+    toggle,
     saveNote,
-  } = usePhotoNoteController(lastCaptureId);
+    linkable,
+  } = usePhotoNoteController();
   const insets = useSafeAreaInsets();
   const [editingTask, setEditingTask] = useState(false);
   const navigation = useNavigation();
@@ -183,26 +189,26 @@ function CameraView() {
         warn={!lastSavedIsPrecise}
       />
 
-      {noteTarget && !isRecording && (
-        <TouchableOpacity
-          style={styles.noteButton}
-          onPress={() => openNote(noteTarget.id)}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Add a note to the last capture"
-        >
-          <Ionicons name="create-outline" size={18} color={colors.white} />
-          <Text style={styles.noteButtonText}>{noteTarget.note ? 'Edit note' : 'Add note'}</Text>
-        </TouchableOpacity>
+      {!isRecording && (
+        <CaptureTray
+          photos={tray}
+          onOpenOne={id => openNote(id)}
+          onOpenAll={() => openNote(tray.map(photo => photo.id))}
+        />
       )}
 
       {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
 
       <PhotoNoteSheet
         visible={noteVisible}
-        note={editing?.note ?? ''}
+        note={sharedNote}
+        inventoryId={sharedInventoryId}
+        items={linkable}
         onSave={saveNote}
         onClose={closeNote}
+        choices={tray}
+        selectedIds={editing.map(photo => photo.id)}
+        onToggle={toggle}
       />
 
       <TaskEditorSheet
@@ -261,19 +267,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 3,
   },
   taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
-  noteButton: {
-    position: 'absolute',
-    right: spacing.xl,
-    bottom: 200,
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 2,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.glass,
-  },
-  noteButtonText: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 14 },
   accuracyBar: { position: 'absolute', alignSelf: 'center' },
   controls: {
     position: 'absolute',

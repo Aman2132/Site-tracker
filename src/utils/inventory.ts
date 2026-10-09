@@ -38,6 +38,12 @@ export function draftProblem(draft: InventoryDraft, limits: DraftLimits): string
   if (!cleanText(draft.unit)) return 'Pick a unit.';
   if (cleanText(draft.unit).length > limits.maxUnitChars) return 'Unit is too long.';
   if ((draft.note ?? '').trim().length > limits.maxNoteChars) return 'Note is too long.';
+  if (draft.packCount != null || draft.packSize != null) {
+    if (!(draft.packCount! > 0) || !(draft.packSize! > 0))
+      return 'Enter how many pieces and how much each is.';
+    if (Math.abs(packTotal(draft.packCount!, draft.packSize!) - draft.quantity) > 1e-6)
+      return 'Total does not match the pieces.';
+  }
   return null;
 }
 
@@ -87,4 +93,62 @@ export function mergeInventory(server: InventoryEntry[], outbox: InventoryEntry[
   const onServer = new Set(server.map(e => e.id));
   const waiting = outbox.filter(e => !onServer.has(e.id)).map(e => ({ ...e, pending: true }));
   return [...server, ...waiting].sort((a, b) => b.receivedAt - a.receivedAt);
+}
+
+/** Count × size, rounded like formatQuantity so 3 × 0.1 is 0.3, not 0.30000000000000004. */
+export function packTotal(count: number, size: number): number {
+  return Math.round(count * size * 1000) / 1000;
+}
+
+/** "5 × 5 m" for a pack entry, else null. */
+export function formatPack(entry: Pick<InventoryEntry, 'packCount' | 'packSize' | 'unit'>): string | null {
+  if (!entry.packCount || !entry.packSize) return null;
+  return `${formatQuantity(entry.packCount)} × ${formatQuantity(entry.packSize)} ${entry.unit}`;
+}
+
+/** Everything received has been logged as used (allowing for rounding). */
+export function isUsedUp(entry: InventoryEntry): boolean {
+  return (entry.usedQuantity ?? 0) >= entry.quantity - 1e-9;
+}
+
+/** 0–1 share used, for the progress bar. */
+export function usedShare(entry: InventoryEntry): number {
+  return entry.quantity > 0 ? Math.min(1, (entry.usedQuantity ?? 0) / entry.quantity) : 0;
+}
+
+/** What's left of a delivery (never negative, even if more was logged used than received). */
+export function remainingQuantity(entry: InventoryEntry): number {
+  return Math.max(0, entry.quantity - (entry.usedQuantity ?? 0));
+}
+
+/** What's wrong with a usage amount for this entry, or null when it can be logged. */
+export function usageProblem(
+  entry: InventoryEntry,
+  quantity: number,
+  note: string,
+  maxNoteChars: number
+): string | null {
+  if (!(quantity > 0)) return 'Enter how much was used (a number above 0).';
+  if (quantity > remainingQuantity(entry))
+    return `Only ${formatQuantity(remainingQuantity(entry))} ${entry.unit} left to log.`;
+  if (note.trim().length > maxNoteChars) return 'Note is too long.';
+  return null;
+}
+
+/**
+ * Entries a photo may be attached to as proof: the person's own, already on
+ * the server (a link to a never-synced id would dangle), not yet used up, at the photo's site
+ * when it has one. Newest first, at most `limit`.
+ */
+export function linkableEntries(
+  entries: InventoryEntry[],
+  personId: string,
+  siteId: string | undefined,
+  limit = 8
+): InventoryEntry[] {
+  return entries
+    // Used-up deliveries are finished: nothing left to photograph being used.
+    .filter(e => e.personId === personId && !e.pending && !isUsedUp(e) && (!siteId || e.siteId === siteId))
+    .sort((a, b) => b.receivedAt - a.receivedAt)
+    .slice(0, limit);
 }

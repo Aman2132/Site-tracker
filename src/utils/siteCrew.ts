@@ -6,6 +6,8 @@ export type CrewStatus = 'here' | 'paused' | 'noSignal' | 'away';
 export interface CrewPresence {
   paused?: boolean;
   lastFixAt?: number;
+  lat?: number;
+  lng?: number;
 }
 
 export interface SiteCrewMember {
@@ -15,6 +17,15 @@ export interface SiteCrewMember {
   color: string;
   avatar?: string;
   status: CrewStatus;
+  /** Last shared position; only while checked in here and not paused (a pause means "don't show me"). */
+  position?: { lat: number; lng: number; lastFixAt?: number };
+}
+
+/** A usable position from a live record: both coordinates, and not the 0,0 an unset record reads as. */
+function positionOf(presence: CrewPresence | undefined): SiteCrewMember['position'] {
+  if (!presence || presence.lat == null || presence.lng == null) return undefined;
+  if (presence.lat === 0 && presence.lng === 0) return undefined;
+  return { lat: presence.lat, lng: presence.lng, lastFixAt: presence.lastFixAt };
 }
 
 /** Checked in here = they have a live record for this site. Silent for too long = no signal. */
@@ -44,16 +55,26 @@ export function buildSiteCrew(
 ): SiteCrewMember[] {
   return assigned
     .filter(person => person.id !== myId && person.active !== false)
-    .map(person => ({
-      id: person.id,
-      name: person.name,
-      role: person.role,
-      color: person.color,
-      ...(person.avatar ? { avatar: person.avatar } : {}),
-      status: crewStatus(presence[person.id], now, signalLostAfterMs),
-    }))
+    .map(person => {
+      const status = crewStatus(presence[person.id], now, signalLostAfterMs);
+      const position =
+        status === 'here' || status === 'noSignal' ? positionOf(presence[person.id]) : undefined;
+      return {
+        id: person.id,
+        name: person.name,
+        role: person.role,
+        color: person.color,
+        ...(person.avatar ? { avatar: person.avatar } : {}),
+        status,
+        ...(position ? { position } : {}),
+      };
+    })
     .sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name));
 }
+
+/** My own last shared position at this site (from the same live feed), for centring the map. */
+export const myPosition = (presence: Record<string, CrewPresence>, myId: string) =>
+  positionOf(presence[myId]);
 
 /** How many of the crew are actually on site with me right now. */
 export const hereCount = (crew: SiteCrewMember[]) => crew.filter(member => member.status === 'here').length;

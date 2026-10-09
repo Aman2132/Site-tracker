@@ -1,5 +1,5 @@
 import { PersonProfile } from '@/types/domain';
-import { buildSiteCrew, crewStatus, hereCount } from '@/utils/siteCrew';
+import { buildSiteCrew, crewStatus, hereCount, myPosition } from '@/utils/siteCrew';
 
 const NOW = 1_000_000_000;
 const MIN = 60_000;
@@ -52,5 +52,34 @@ describe('buildSiteCrew', () => {
       ['Bina', 'away'],
     ]);
     expect(hereCount(crew)).toBe(1);
+  });
+});
+
+describe('crew positions for the site map', () => {
+  const assigned = [
+    person('me', 'Me'),
+    person('a', 'Arun'),
+    person('c', 'Chitra'),
+    person('d', 'Dev'),
+    person('e', 'Esha'),
+  ];
+  const presence = {
+    a: { lastFixAt: NOW - MIN, lat: 27.7, lng: 85.3 },
+    c: { lastFixAt: NOW - MIN, lat: 27.71, lng: 85.31, paused: true },
+    d: { lastFixAt: NOW - 20 * MIN, lat: 27.72, lng: 85.32 },
+    e: { lastFixAt: NOW - MIN, lat: 0, lng: 0 },
+    me: { lastFixAt: NOW, lat: 27.69, lng: 85.29 },
+  };
+  const byId = Object.fromEntries(buildSiteCrew(assigned, presence, 'me', NOW, LOST).map(m => [m.id, m]));
+
+  it('shows here and no-signal people where they last were, never someone on a break', () => {
+    expect(byId.a.position).toEqual({ lat: 27.7, lng: 85.3, lastFixAt: NOW - MIN });
+    expect(byId.d.position?.lat).toBe(27.72);
+    expect(byId.c.position).toBeUndefined();
+  });
+  it('ignores an unset 0,0 position and finds my own', () => {
+    expect(byId.e.position).toBeUndefined();
+    expect(myPosition(presence, 'me')).toEqual({ lat: 27.69, lng: 85.29, lastFixAt: NOW });
+    expect(myPosition(presence, 'nobody')).toBeUndefined();
   });
 });

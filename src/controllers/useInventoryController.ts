@@ -4,8 +4,9 @@ import { AppState } from 'react-native';
 import {
   createInventoryEntry,
   inventoryEntryExists,
+  logInventoryUsage,
   newInventoryId,
-  subscribeToMyInventory,
+  subscribeToSiteInventory,
 } from '@/api/inventoryApi';
 import { fetchPersonProfile } from '@/api/peopleApi';
 import { fetchSitesByIds } from '@/api/sitesApi';
@@ -15,7 +16,15 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { useInventoryStore } from '@/store/useInventoryStore';
 import { useShiftStore } from '@/store/useShiftStore';
 import { InventoryDraft, InventoryEntry } from '@/types/domain';
-import { cleanText, draftProblem, itemSuggestions, lastUnitFor, mergeInventory } from '@/utils/inventory';
+import {
+  cleanText,
+  draftProblem,
+  isUsedUp,
+  itemSuggestions,
+  lastUnitFor,
+  mergeInventory,
+  usageProblem,
+} from '@/utils/inventory';
 
 /** Entries handed to Firestore this app run; shared so two screens never send one twice. */
 const inFlight = new Set<string>();
@@ -48,6 +57,40 @@ async function send(personId: string, entry: InventoryEntry, fresh: boolean): Pr
 }
 
 /**
+ * Keeps the inventory store live with everything received/used at my sites
+ * (not just my own entries), so site-mates can see — but not touch — each
+ * other's deliveries. Used by the Items tab and the photo details sheet.
+ */
+export function useSiteInventoryFeed() {
+  const profile = useAuthStore(state => state.profile);
+  const personId = profile?.id;
+  // Prefer the freshly fetched site list (Home refreshes it): the rules check the
+  // server's siteIds, and one stale id would make Firestore reject the whole query.
+  const freshSites = useShiftStore(state => state.sites);
+  const siteIds = freshSites.length ? freshSites.map(site => site.id) : (profile?.siteIds ?? []);
+  const siteIdsKey = siteIds.join(',');
+  useEffect(() => {
+    if (!personId || !HAS_FIREBASE_CONFIG || siteIds.length === 0) {
+      useInventoryStore.getState().setEntries([]);
+      useInventoryStore.getState().setLoaded(true);
+      return;
+    }
+    return subscribeToSiteInventory(
+      siteIds,
+      list => {
+        useInventoryStore.getState().setEntries(list);
+        useInventoryStore.getState().setLoaded(true);
+      },
+      error => {
+        console.warn('[inventory] live list stopped —', error);
+        useInventoryStore.getState().setLoaded(true);
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- siteIdsKey stands in for siteIds
+  }, [personId, siteIdsKey]);
+}
+
+/**
  * Items tab: what this person has logged as received, live (owner edits
  * included), plus adding new entries. Entries are kept on the phone until the
  * server confirms them, so nothing typed without signal is lost.
@@ -70,24 +113,7 @@ export function useInventoryController() {
     setSyncError(results.find(Boolean) ?? null);
   }, [personId]);
 
-  // Live list of my entries.
-  useEffect(() => {
-    if (!personId || !HAS_FIREBASE_CONFIG) {
-      useInventoryStore.getState().setLoaded(true);
-      return;
-    }
-    return subscribeToMyInventory(
-      personId,
-      list => {
-        useInventoryStore.getState().setEntries(list);
-        useInventoryStore.getState().setLoaded(true);
-      },
-      error => {
-        console.warn('[inventory] live list stopped —', error);
-        useInventoryStore.getState().setLoaded(true);
-      }
-    );
-  }, [personId]);
+  useSiteInventoryFeed();
 
   // Pick up anything saved but unsent from an earlier run, then send it.
   useEffect(() => {
@@ -120,6 +146,11 @@ export function useInventoryController() {
   }, [personId, sites.length]);
 
   const items = useMemo(() => mergeInventory(entries, outbox), [entries, outbox]);
+  /** For the list: still-in-use first, finished ones at the bottom (stable, so newest first within each). */
+  const listed = useMemo(
+    () => [...items].sort((a, b) => Number(isUsedUp(a)) - Number(isUsedUp(b))),
+    [items]
+  );
   const siteNames = useMemo(() => Object.fromEntries(sites.map(s => [s.id, s.name])), [sites]);
 
   /** Saves one item; resolves with what's wrong, or null when it was saved. */
@@ -137,6 +168,9 @@ export function useInventoryController() {
         name: cleanText(draft.name),
         quantity: draft.quantity,
         unit: cleanText(draft.unit),
+        ...(draft.packCount && draft.packSize
+          ? { packCount: draft.packCount, packSize: draft.packSize }
+          : {}),
         ...(note ? { note } : {}),
         receivedAt: Date.now(),
       };
@@ -155,8 +189,29 @@ export function useInventoryController() {
   );
   const unitFor = useCallback((name: string) => lastUnitFor(items, name), [items]);
 
+  /** Only the entry's own creator may log usage against it — everyone else just reads it. */
+  const canLogUsage = useCallback((entry: InventoryEntry) => entry.personId === personId, [personId]);
+
+  /** Resolves with what's wrong, or null when it was logged. A pending (not-yet-synced) entry can't take usage yet. */
+  const logUsage = useCallback(
+    async (entry: InventoryEntry, quantity: number, note: string): Promise<string | null> => {
+      if (!canLogUsage(entry)) return 'Only who logged this item can log how much was used.';
+      if (entry.pending) return 'Still sending this item — try again once it has synced.';
+      const problem = usageProblem(entry, quantity, note, INVENTORY.maxNoteChars);
+      if (problem) return problem;
+      try {
+        await logInventoryUsage(entry.id, quantity, note);
+        return null;
+      } catch (error) {
+        console.warn('[inventory] log usage failed —', error);
+        return error instanceof Error ? error.message : 'Could not save that.';
+      }
+    },
+    [canLogUsage]
+  );
+
   return {
-    items,
+    items: listed,
     loaded,
     sites,
     siteNames,
@@ -164,6 +219,8 @@ export function useInventoryController() {
     defaultSiteId: activeSiteId ?? (sites.length === 1 ? sites[0].id : ''),
     waitingCount: items.filter(e => e.pending).length,
     syncError,
+    canLogUsage,
+    logUsage,
     add,
     suggest,
     unitFor,

@@ -2,6 +2,7 @@
   "rules": {
     "positions": {
       ".read": "auth != null",
+      ".indexOn": ["siteId"],
       "$uid": {
         ".write": "auth != null && auth.uid === $uid"
       }

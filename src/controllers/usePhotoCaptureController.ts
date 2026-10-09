@@ -17,7 +17,6 @@ import { useShiftStore } from '@/store/useShiftStore';
 import { GeoFix, Photo } from '@/types/domain';
 import { formatDuration } from '@/utils/camera';
 import { plusCodeFor } from '@/utils/geo';
-import { smoothAccuracy } from '@/utils/gps';
 import { captureFileName, displaySize, newLocalPhotoId } from '@/utils/photos';
 
 const TAG = '[capture]';
@@ -99,7 +98,7 @@ export function usePhotoCaptureController() {
   const myName = useAuthStore(state => state.profile?.name);
   const [lastSavedLabel, setLastSavedLabel] = useState<string | null>(null);
   const [lastSavedIsPrecise, setLastSavedIsPrecise] = useState(true);
-  /** Smoothed + rounded for display only; the raw fix used for geotagging lives in liveFixRef. */
+  /** The live fix's accuracy, rounded — the same reading a photo taken now would be saved with. */
   const [displayAccuracy, setDisplayAccuracy] = useState<number | null>(null);
   const [lastCaptureId, setLastCaptureId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -107,7 +106,6 @@ export function usePhotoCaptureController() {
   const [recordingMs, setRecordingMs] = useState(0);
 
   const liveFixRef = useRef<GeoFix | null>(null);
-  const smoothedRef = useRef<number | null>(null);
   const canSaveToGallery = useRef(false);
   /** A 12 MP photo is ~5 MB of base64 in JS memory; two at once is a real memory spike, so one at a time. */
   const savingRef = useRef(false);
@@ -117,14 +115,10 @@ export function usePhotoCaptureController() {
   useEffect(() => {
     return watchPreciseFix(fix => {
       liveFixRef.current = fix;
-      smoothedRef.current = smoothAccuracy(
-        smoothedRef.current,
-        fix.accuracy,
-        GEOTAG_ACCURACY.displaySmoothing
-      );
-      // Whole metres, and only when the number actually changes — otherwise the
-      // whole camera screen would re-render on every raw sample.
-      setDisplayAccuracy(Math.round(smoothedRef.current));
+      // Raw, not smoothed: a smoothed badge lagged behind and could show ±15 m
+      // while the photo was saved with ±50 m. Rounding to whole metres keeps
+      // re-renders to when the number actually changes.
+      setDisplayAccuracy(Math.round(fix.accuracy));
     });
   }, []);
 

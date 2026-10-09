@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react-native';
 
+import { logAdminAction } from '@/api/adminAuditApi';
 import { logEvent } from '@/api/eventsApi';
 import { updatePersonProfile } from '@/api/peopleApi';
 import { useCrewManagementController } from '@/controllers/useCrewManagementController';
@@ -9,6 +10,7 @@ import { Person } from '@/types/domain';
 
 jest.mock('@/constants/config', () => ({ HAS_FIREBASE_CONFIG: true }));
 jest.mock('@/api/peopleApi', () => ({ updatePersonProfile: jest.fn(async () => undefined) }));
+jest.mock('@/api/adminAuditApi', () => ({ logAdminAction: jest.fn(async () => undefined) }));
 jest.mock('@/api/eventsApi', () => ({ logEvent: jest.fn(async () => undefined) }));
 jest.mock('@/controllers/useCrewTrackingController', () => ({ useCrewTrackingController: jest.fn() }));
 
@@ -71,6 +73,11 @@ describe('useCrewManagementController', () => {
 
     expect(updatePersonProfile).toHaveBeenCalledWith('worker-1', { role: 'Mason · Crew B' });
     expect(logEvent).toHaveBeenCalledWith(expect.stringContaining("Ramesh Kumar's job title"), 'info');
+    expect(logAdminAction).toHaveBeenCalledWith(
+      expect.stringContaining("Ramesh Kumar's job title"),
+      { targetType: 'person', targetId: 'worker-1' },
+      { id: 'owner-1', name: 'Administrator' }
+    );
   });
 
   it('does not write an unchanged or blank job title', async () => {
@@ -109,6 +116,22 @@ describe('useCrewManagementController', () => {
     expect(result.current.error).toBeTruthy();
     expect(result.current.saving).toBe(false);
     expect(logEvent).not.toHaveBeenCalled();
+    expect(logAdminAction).not.toHaveBeenCalled();
+  });
+
+  it('offers the role toggle only to a superadmin, never on themselves or another superadmin', () => {
+    const boss = person({ id: 'super-1', name: 'Boss', appRole: 'superadmin' });
+    (useCrewTrackingController as jest.Mock).mockReturnValue({ people: [ramesh, admin, boss], loaded: true });
+    const { result } = renderHook(() => useCrewManagementController());
+
+    act(() => result.current.select('worker-1'));
+    expect(result.current.canChangeRole).toBe(false);
+
+    useAuthStore.setState({ profile: { ...boss, role: 'Boss', appRole: 'superadmin' } });
+    act(() => result.current.select('worker-1'));
+    expect(result.current.canChangeRole).toBe(true);
+    act(() => result.current.select('super-1'));
+    expect(result.current.canChangeRole).toBe(false);
   });
 
   it('knows when the owner is looking at themselves', () => {

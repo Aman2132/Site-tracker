@@ -232,7 +232,7 @@ describe('usePhotoQueueController gallery recovery', () => {
 describe('usePhotoQueueController sync', () => {
   beforeEach(() => {
     resetMocks();
-    usePhotoStore.setState({ syncStatus: {}, noteEditingId: null });
+    usePhotoStore.setState({ syncStatus: {}, noteEditingIds: [], trayIds: [] });
     useAuthStore.setState({ profile: worker });
     usePhotoStore.setState({
       photos: [queuedPhoto({ id: 'pending', synced: false })],
@@ -377,7 +377,7 @@ describe('usePhotoQueueController sync', () => {
 
   it('holds back a photo whose note is open', async () => {
     jest.useFakeTimers();
-    usePhotoStore.setState({ noteEditingId: 'pending' });
+    usePhotoStore.setState({ noteEditingIds: ['pending'] });
     try {
       renderHook(() => usePhotoQueueController());
       await act(async () => {

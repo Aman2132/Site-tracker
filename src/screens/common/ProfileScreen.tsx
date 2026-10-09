@@ -8,6 +8,7 @@ import SignOutButton from '@/components/common/SignOutButton';
 import { KEYBOARD, PROFILE } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/constants/theme';
 import { useProfileController } from '@/controllers/useProfileController';
+import { hasOwnerAccess, roleLabel } from '@/utils/roles';
 
 /** Profile tab, for owners and workers: their own name and photo, account details, sign out. */
 export default function ProfileScreen() {
@@ -17,7 +18,7 @@ export default function ProfileScreen() {
   useEffect(() => setName(profile?.name ?? ''), [profile?.name]);
 
   if (!profile) return null;
-  const isOwner = profile.appRole === 'owner';
+  const isOwner = hasOwnerAccess(profile.appRole);
   const accent = isOwner ? colors.primary : colors.worker;
   const nameChanged = name.trim().length > 0 && name.trim() !== profile.name;
   // Phone and team are set by the admin when they invite someone; self-signed-up accounts have neither.
@@ -26,7 +27,7 @@ export default function ProfileScreen() {
     ...(profile.phone ? [['Phone', profile.phone] as [string, string]] : []),
     ['Job title', profile.role],
     ...(profile.team ? [['Team', profile.team] as [string, string]] : []),
-    ['Account', isOwner ? 'Owner' : 'Worker'],
+    ['Account', roleLabel(profile.appRole)],
   ];
 
   return (

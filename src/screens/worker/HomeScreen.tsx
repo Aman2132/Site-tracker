@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import InitialsAvatar from '@/components/common/InitialsAvatar';
@@ -11,10 +11,12 @@ import CheckInCard from '@/components/worker/CheckInCard';
 import PauseToggleRow from '@/components/worker/PauseToggleRow';
 import ShareStatusCard from '@/components/worker/ShareStatusCard';
 import ShiftCard from '@/components/worker/ShiftCard';
+import SiteCrewCard from '@/components/worker/SiteCrewCard';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 import { useLocationSharingController } from '@/controllers/useLocationSharingController';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { useShiftController } from '@/controllers/useShiftController';
+import { useSiteCrewController } from '@/controllers/useSiteCrewController';
 import { useAuthStore } from '@/store/useAuthStore';
 
 function greeting(): string {
@@ -27,6 +29,7 @@ function greeting(): string {
 export default function HomeScreen() {
   useLocationSharingController();
   const shift = useShiftController();
+  const siteCrew = useSiteCrewController(shift.active?.siteId);
   const { pendingCount } = usePhotoQueueController();
   const profile = useAuthStore(state => state.profile);
   const name = profile?.name ?? '';
@@ -59,7 +62,11 @@ export default function HomeScreen() {
         )}
       </LinearGradient>
 
-      <View style={styles.body}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
         {shift.active ? (
           <>
             <ShareStatusCard paused={shift.paused} />
@@ -71,24 +78,39 @@ export default function HomeScreen() {
               onCheckOut={shift.checkOut}
             />
             <PauseToggleRow paused={shift.paused} onToggle={shift.togglePause} />
+            <StatRow
+              label="Waiting to upload"
+              value={pendingCount}
+              icon="cloud-upload-outline"
+              gradient={gradients.worker}
+            />
+            {/* Last: it can be a long list, and the controls above must stay in reach. */}
+            <SiteCrewCard
+              siteName={shift.active.siteName}
+              crew={siteCrew.crew}
+              hereCount={siteCrew.hereCount}
+              loading={siteCrew.loading}
+            />
           </>
         ) : (
-          <CheckInCard
-            sites={shift.sites}
-            loading={shift.loading || shift.loadingSites}
-            busy={shift.busy}
-            error={shift.error}
-            onCheckIn={shift.checkIn}
-            onRefresh={shift.refreshSites}
-          />
+          <>
+            <CheckInCard
+              sites={shift.sites}
+              loading={shift.loading || shift.loadingSites}
+              busy={shift.busy}
+              error={shift.error}
+              onCheckIn={shift.checkIn}
+              onRefresh={shift.refreshSites}
+            />
+            <StatRow
+              label="Waiting to upload"
+              value={pendingCount}
+              icon="cloud-upload-outline"
+              gradient={gradients.worker}
+            />
+          </>
         )}
-        <StatRow
-          label="Waiting to upload"
-          value={pendingCount}
-          icon="cloud-upload-outline"
-          gradient={gradients.worker}
-        />
-      </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
@@ -115,5 +137,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
   },
-  body: { flex: 1, paddingHorizontal: spacing.lg, marginTop: -spacing.lg },
+  body: { flex: 1, marginTop: -spacing.lg },
+  bodyContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
 });

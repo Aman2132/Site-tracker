@@ -11,5 +11,6 @@ export type WorkerTabParamList = {
   Camera: undefined;
   MyPhotos: undefined;
   Items: undefined;
+  SiteMap: undefined;
   Profile: undefined;
 };

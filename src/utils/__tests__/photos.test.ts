@@ -1,6 +1,7 @@
 import { Photo } from '@/types/domain';
 import {
   autoSyncable,
+  sharedValue,
   cleanNote,
   captureFileName,
   countBySite,
@@ -171,10 +172,20 @@ describe('autoSyncable', () => {
   ];
 
   it("is this person's unsynced captures only", () => {
-    expect(autoSyncable(list, 'worker-1', null).map(p => p.id)).toEqual(['a', 'd']);
+    expect(autoSyncable(list, 'worker-1', []).map(p => p.id)).toEqual(['a', 'd']);
   });
 
   it('holds back the capture whose note is being typed', () => {
-    expect(autoSyncable(list, 'worker-1', 'a').map(p => p.id)).toEqual(['d']);
+    expect(autoSyncable(list, 'worker-1', ['a']).map(p => p.id)).toEqual(['d']);
+  });
+});
+
+describe('sharedValue', () => {
+  it('returns the common value, or blank when they differ or are missing', () => {
+    expect(sharedValue(['slab', 'slab'])).toBe('slab');
+    expect(sharedValue(['slab', 'wall'])).toBe('');
+    expect(sharedValue(['slab', undefined])).toBe('');
+    expect(sharedValue([undefined, undefined])).toBe('');
+    expect(sharedValue([])).toBe('');
   });
 });

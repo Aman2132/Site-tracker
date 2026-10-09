@@ -15,7 +15,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { INVENTORY } from '@/constants/config';
 import { colors, fontFamily, radius, spacing, typography } from '@/constants/theme';
 import { InventoryDraft, Site } from '@/types/domain';
-import { formatQuantity, ItemSuggestion, parseQuantity } from '@/utils/inventory';
+import { formatQuantity, ItemSuggestion, packTotal, parseQuantity } from '@/utils/inventory';
 
 const OTHER = 'Other…';
 
@@ -53,6 +53,10 @@ export default function InventoryEntrySheet({
   const [siteId, setSiteId] = useState(defaultSiteId);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
+  /** "5 pieces of 5 m" instead of a plain total. */
+  const [byPieces, setByPieces] = useState(false);
+  const [pieces, setPieces] = useState('');
+  const [each, setEach] = useState('');
   const [unit, setUnit] = useState('');
   const [customUnit, setCustomUnit] = useState(false);
   const [note, setNote] = useState('');
@@ -70,6 +74,9 @@ export default function InventoryEntrySheet({
     setName(preset?.name ?? '');
     pickUnit(preset?.unit ?? '');
     setQuantity('');
+    setByPieces(false);
+    setPieces('');
+    setEach('');
     setNote('');
     setError(null);
     if (!keepSaved) setSaved(null);
@@ -100,14 +107,24 @@ export default function InventoryEntrySheet({
     quantityRef.current?.focus();
   };
 
+  const pieceCount = parseQuantity(pieces);
+  const pieceSize = parseQuantity(each);
+  const piecesTotal = pieceCount != null && pieceSize != null ? packTotal(pieceCount, pieceSize) : null;
+
   const save = async (andAnother: boolean) => {
-    const amount = parseQuantity(quantity);
+    const amount = byPieces ? piecesTotal : parseQuantity(quantity);
     if (amount == null) {
-      setError('Enter how many (a number above 0).');
+      setError(
+        byPieces ? 'Enter how many pieces and how much each is.' : 'Enter how many (a number above 0).'
+      );
       return;
     }
+    const pack =
+      byPieces && pieceCount != null && pieceSize != null
+        ? { packCount: pieceCount, packSize: pieceSize }
+        : {};
     setBusy(true);
-    const problem = await onSave({ siteId, name, quantity: amount, unit, note });
+    const problem = await onSave({ siteId, name, quantity: amount, unit, note, ...pack });
     setBusy(false);
     if (problem) {
       setError(problem);
@@ -185,21 +202,68 @@ export default function InventoryEntrySheet({
             </View>
           )}
 
-          <Text style={styles.label}>HOW MANY</Text>
-          <TextInput
-            ref={quantityRef}
-            style={[styles.input, styles.quantity]}
-            value={quantity}
-            onChangeText={text => {
-              setQuantity(text);
-              setError(null);
-            }}
-            placeholder="0"
-            placeholderTextColor={colors.textFaint}
-            keyboardType="decimal-pad"
-            autoFocus={!!preset}
-            maxLength={12}
-          />
+          <View style={styles.howRow}>
+            <Text style={styles.label}>HOW MANY</Text>
+            <View style={styles.modes}>
+              <Chip label="Total" selected={!byPieces} onPress={() => setByPieces(false)} />
+              <Chip label="Pieces of a size" selected={byPieces} onPress={() => setByPieces(true)} />
+            </View>
+          </View>
+          {byPieces ? (
+            <>
+              <View style={styles.piecesRow}>
+                <TextInput
+                  ref={quantityRef}
+                  style={[styles.input, styles.quantity, styles.piecesInput]}
+                  value={pieces}
+                  onChangeText={text => {
+                    setPieces(text);
+                    setError(null);
+                  }}
+                  placeholder="5"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="decimal-pad"
+                  maxLength={9}
+                  accessibilityLabel="How many pieces"
+                />
+                <Text style={styles.times}>pcs ×</Text>
+                <TextInput
+                  style={[styles.input, styles.quantity, styles.piecesInput]}
+                  value={each}
+                  onChangeText={text => {
+                    setEach(text);
+                    setError(null);
+                  }}
+                  placeholder="5"
+                  placeholderTextColor={colors.textFaint}
+                  keyboardType="decimal-pad"
+                  maxLength={9}
+                  accessibilityLabel="How much each piece is"
+                />
+                <Text style={styles.times}>{unit || 'unit'} each</Text>
+              </View>
+              <Text style={styles.total}>
+                {piecesTotal != null && unit
+                  ? `= ${formatQuantity(piecesTotal)} ${unit} in total`
+                  : 'Pick the unit each piece is measured in below (e.g. m for wire).'}
+              </Text>
+            </>
+          ) : (
+            <TextInput
+              ref={quantityRef}
+              style={[styles.input, styles.quantity]}
+              value={quantity}
+              onChangeText={text => {
+                setQuantity(text);
+                setError(null);
+              }}
+              placeholder="0"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="decimal-pad"
+              autoFocus={!!preset}
+              maxLength={12}
+            />
+          )}
 
           <Text style={styles.label}>UNIT</Text>
           <View style={styles.chips}>
@@ -323,6 +387,17 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   quantity: { fontFamily: fontFamily.bold, fontSize: 22 },
+  howRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+  },
+  modes: { flexDirection: 'row', gap: spacing.xs },
+  piecesRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  piecesInput: { flex: 1, minWidth: 64 },
+  times: { fontFamily: fontFamily.semibold, fontSize: 14, color: colors.textMuted },
+  total: { fontFamily: fontFamily.bold, fontSize: 14, color: colors.workerDeep },
   note: { minHeight: 64, textAlignVertical: 'top' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {

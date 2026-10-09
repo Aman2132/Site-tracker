@@ -108,6 +108,7 @@ export async function uploadPhotos(photos: Photo[], thumbUris: Record<string, st
       ...(thumbUrl ? { thumbUrl } : {}),
       task: photo.task,
       ...(photo.note ? { note: photo.note } : {}),
+      ...(photo.inventoryId ? { inventoryId: photo.inventoryId } : {}),
       mediaType: photo.mediaType ?? 'photo',
       // Firestore rejects `undefined` field values outright, so only send a
       // duration when there is one (photos have none).

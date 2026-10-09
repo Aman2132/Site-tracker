@@ -4,13 +4,13 @@ import { fetchSiteCrew, SitePresence, subscribeToSitePresence } from '@/api/peop
 import { HAS_FIREBASE_CONFIG, SITE_CREW } from '@/constants/config';
 import { useAuthStore } from '@/store/useAuthStore';
 import { PersonProfile } from '@/types/domain';
-import { buildSiteCrew, hereCount } from '@/utils/siteCrew';
+import { buildSiteCrew, hereCount, myPosition } from '@/utils/siteCrew';
 
 /**
- * Worker Home screen: who else works at the site I'm checked in at, and who
- * of them is on site right now. Reads only that site's crew (one small query)
- * and only that site's live check-ins, never everyone's positions, and shows
- * names and status only, not anyone's location.
+ * Worker Home screen: who else works at the site I'm checked in at, who of
+ * them is on site right now, and where (for the site map). Reads only that
+ * site's crew (one small query) and only that site's live check-ins. A person
+ * who paused sharing shows as "on a break" with no position.
  */
 export function useSiteCrewController(siteId: string | undefined) {
   const myId = useAuthStore(state => state.profile?.id);
@@ -50,8 +50,15 @@ export function useSiteCrewController(siteId: string | undefined) {
     return buildSiteCrew(assigned.people, live, myId ?? '', now, SITE_CREW.signalLostAfterMs);
   }, [siteId, assigned, presence, myId, now]);
 
+  const me = useMemo(
+    () => (siteId && presence?.siteId === siteId ? myPosition(presence.bySite, myId ?? '') : undefined),
+    [siteId, presence, myId]
+  );
+
   return {
     crew,
+    me,
+    now,
     hereCount: hereCount(crew),
     loading: !!siteId && HAS_FIREBASE_CONFIG && assigned?.siteId !== siteId,
   };

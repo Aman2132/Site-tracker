@@ -9,8 +9,10 @@ import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import InventoryEntrySheet from '@/components/worker/InventoryEntrySheet';
 import InventoryRow from '@/components/worker/InventoryRow';
+import InventoryUsageSheet from '@/components/worker/InventoryUsageSheet';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 import { useInventoryController } from '@/controllers/useInventoryController';
+import { InventoryEntry } from '@/types/domain';
 import { ItemSuggestion } from '@/utils/inventory';
 
 export default function InventoryScreen() {
@@ -19,6 +21,8 @@ export default function InventoryScreen() {
   /** Null while closed; `preset` set when opened from a row's "+ again". */
   const [sheet, setSheet] = useState<{ preset?: ItemSuggestion } | null>(null);
   const close = useCallback(() => setSheet(null), []);
+  const [usageFor, setUsageFor] = useState<InventoryEntry | null>(null);
+  const closeUsage = useCallback(() => setUsageFor(null), []);
   const noSites = inventory.sites.length === 0;
 
   if (!inventory.loaded) return <LoadingView />;
@@ -59,13 +63,15 @@ export default function InventoryScreen() {
           <InventoryRow
             entry={item}
             siteName={inventory.siteNames[item.siteId]}
+            canLogUsage={inventory.canLogUsage(item)}
             onRepeat={() => setSheet({ preset: { name: item.name, unit: item.unit } })}
+            onLogUsage={() => setUsageFor(item)}
           />
         )}
         ListEmptyComponent={
           <EmptyState
             icon="cube-outline"
-            message="Nothing logged yet. Tap the button above when a delivery arrives."
+            message="Nothing logged at your sites yet. Tap the button above when a delivery arrives."
           />
         }
       />
@@ -80,6 +86,7 @@ export default function InventoryScreen() {
         onSave={inventory.add}
         onClose={close}
       />
+      <InventoryUsageSheet entry={usageFor} onSave={inventory.logUsage} onClose={closeUsage} />
     </ScreenContainer>
   );
 }

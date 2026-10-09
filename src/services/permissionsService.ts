@@ -52,3 +52,9 @@ export async function requestGallerySavePermission(): Promise<boolean> {
   );
   return result?.granted ?? false;
 }
+
+/** Checks (never prompts) whether foreground location is already granted. */
+export async function hasForegroundLocationPermission(): Promise<boolean> {
+  const result = await Location.getForegroundPermissionsAsync().catch(() => null);
+  return result?.status === 'granted';
+}

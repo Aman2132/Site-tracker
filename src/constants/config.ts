@@ -70,11 +70,6 @@ export const GEOTAG_ACCURACY = {
   watchdogIntervalMs: 3000,
   /** How long to wait before re-subscribing after the watch failed (e.g. permission not granted yet). */
   retryIntervalMs: 2500,
-  /**
-   * The badge follows a smoothed accuracy (exponential average) so it does
-   * not flicker between 4 m and 19 m on every raw sample. 0-1: higher reacts faster.
-   */
-  displaySmoothing: 0.35,
 };
 
 /** Camera screen tunables. */
@@ -128,6 +123,9 @@ export const SITE_CREW = {
   signalLostAfterMs: 15 * 60_000,
   /** How often the card re-checks that, since a silent phone sends nothing to react to. */
   refreshMs: 60_000,
+  /** Site map: height in px, and the view's span in degrees when there is only one pin (~400 m). */
+  mapHeight: 240,
+  mapSpanDeg: 0.004,
 };
 
 /** Small previews uploaded next to each photo, so the admin dashboard's gallery stays light. */

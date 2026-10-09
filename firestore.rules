@@ -19,8 +19,17 @@ service cloud.firestore {
       return signedIn() && me().get('active', true) != false;
     }
 
+    // Superadmin has every owner power (this predicate is what every
+    // owner-only rule below actually checks) plus two things an owner can't
+    // do: grant/revoke the owner role itself, and read the audit trail of
+    // admin edits. Nobody can become superadmin through the app — it's set
+    // by hand (console/seed script) precisely so it can't be self-granted.
     function isOwner() {
-      return isActive() && me().appRole == 'owner';
+      return isActive() && me().appRole in ['owner', 'superadmin'];
+    }
+
+    function isSuperadmin() {
+      return isActive() && me().appRole == 'superadmin';
     }
 
     // Roster: read by anyone signed in (the crew list + names are shared
@@ -53,16 +62,26 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['name', 'role', 'appRole', 'color']);
       // The admin dashboard also assigns sites and records contact details:
       // siteIds, email, phone, team, invitedAt (set when it invites someone).
+      // appRole is NOT in this list: granting/revoking admin is superadmin-only (next rule).
+      // A plain owner also can't deactivate a superadmin.
       allow update: if isOwner()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'appRole', 'active', 'siteIds', 'email', 'phone', 'team', 'invitedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'active', 'siteIds', 'email', 'phone', 'team', 'invitedAt'])
         && request.resource.data.role is string
         && request.resource.data.role.size() > 0
         && request.resource.data.role.size() <= 60
-        && request.resource.data.appRole in ['owner', 'worker']
         && request.resource.data.get('active', true) is bool
         && request.resource.data.get('siteIds', []) is list
         && (uid != request.auth.uid
-            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['appRole', 'active']));
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['active']))
+        && (resource.data.appRole != 'superadmin' || isSuperadmin()
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['active']));
+      // Grant / revoke admin: superadmin only, owner <-> worker only, never on
+      // themselves and never on another superadmin (that role is console-only).
+      allow update: if isSuperadmin()
+        && uid != request.auth.uid
+        && resource.data.appRole in ['owner', 'worker']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['appRole'])
+        && request.resource.data.appRole in ['owner', 'worker'];
       allow update: if isActive()
         && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'avatar'])
@@ -96,7 +115,37 @@ service cloud.firestore {
         && resource.data.personId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['end', 'endReason'])
         && request.resource.data.endReason in ['signed-off', 'paused'];
+      // Admin correction of check-in/check-out. Only times, site and end reason;
+      // who did it and why goes to adminAudit (superadmin-only), not this doc,
+      // because every owner can read sessions. `editedAt` just marks it corrected.
+      allow update: if isOwner()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['start', 'end', 'endReason', 'siteId', 'editedAt'])
+        && request.resource.data.personId == resource.data.personId
+        && request.resource.data.start is number
+        && request.resource.data.siteId is string
+        && (!('end' in request.resource.data)
+            || (request.resource.data.end is number && request.resource.data.end >= request.resource.data.start))
+        && request.resource.data.get('endReason', 'signed-off') in ['signed-off', 'paused', 'admin']
+        && request.resource.data.editedAt is number
+        // Every correction must restamp editedAt, so "Corrected" always shows the latest one.
+        && request.resource.data.diff(resource.data).affectedKeys().hasAny(['editedAt']);
       allow delete: if false;
+    }
+
+    // Audit trail of admin actions. Every owner/superadmin writes one entry per
+    // action as themselves (the dashboard does it automatically, see attempt()
+    // in its lib/store.tsx); only a superadmin can read them. Append-only.
+    match /adminAudit/{entryId} {
+      allow read: if isSuperadmin();
+      allow create: if isOwner()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.action.size() <= 200
+        && request.resource.data.at is number
+        && request.resource.data.get('note', '') is string
+        && request.resource.data.get('note', '').size() <= 500
+        && request.resource.data.keys().hasOnly(['actorId', 'actorName', 'action', 'targetType', 'targetId', 'note', 'at']);
+      allow update, delete: if false;
     }
 
     // Photos: the owner sees everything; a worker sees only their own. A
@@ -134,17 +183,44 @@ service cloud.firestore {
         && data.quantity is number && data.quantity > 0 && data.quantity <= 1000000
         && data.unit is string && data.unit.size() > 0 && data.unit.size() <= 20
         && data.receivedAt is number
-        && data.get('note', '') is string && data.get('note', '').size() <= 300;
+        && data.get('note', '') is string && data.get('note', '').size() <= 300
+        && data.get('packCount', 1) is number && data.get('packCount', 1) > 0
+        && data.get('packSize', 1) is number && data.get('packSize', 1) > 0;
     }
+    function validUsage(list) {
+      return list.size() > 0
+        && list[list.size() - 1].quantity is number
+        && list[list.size() - 1].quantity > 0
+        && list[list.size() - 1].at is number
+        && list[list.size() - 1].get('note', '') is string
+        && list[list.size() - 1].get('note', '').size() <= 300;
+    }
+
     match /inventory/{entryId} {
+      // Any crew assigned to the entry's site may read it — not only who logged it —
+      // so site-mates can see what's been received and used. `resource == null` lets
+      // the phone check whether an entry it saved offline already reached the server.
       allow read: if isOwner()
-        || (signedIn() && (resource == null || resource.data.personId == request.auth.uid));
+        || (signedIn() && (resource == null || resource.data.siteId in me().get('siteIds', [])));
       allow create: if isActive()
         && request.resource.data.personId == request.auth.uid
         && (isOwner() || request.resource.data.siteId in me().get('siteIds', []))
         && validInventory(request.resource.data)
-        && request.resource.data.keys().hasOnly(['personId', 'personName', 'siteId', 'name', 'quantity', 'unit', 'note', 'receivedAt', 'createdAt']);
-      allow update: if isOwner() && validInventory(request.resource.data);
+        && request.resource.data.keys().hasOnly(['personId', 'personName', 'siteId', 'name', 'quantity', 'unit', 'packCount', 'packSize', 'note', 'receivedAt', 'createdAt']);
+      // Logging usage: only the person who created the entry, appending exactly one
+      // entry to `usage` each time, with `usedQuantity` kept as its running sum. They
+      // may never touch anything else about the entry — that stays owner-only below.
+      allow update: if isActive()
+        && resource.data.personId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usage', 'usedQuantity'])
+        && request.resource.data.usage.size() == resource.data.get('usage', []).size() + 1
+        && validUsage(request.resource.data.usage)
+        && request.resource.data.usedQuantity == resource.data.get('usedQuantity', 0) + request.resource.data.usage[request.resource.data.usage.size() - 1].quantity;
+      // Admins may correct anything except who logged it and when it arrived:
+      // "logged by" stays the crew member who actually made the entry.
+      allow update: if isOwner()
+        && validInventory(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['personId', 'personName', 'receivedAt', 'createdAt']);
       allow delete: if isOwner();
     }
 

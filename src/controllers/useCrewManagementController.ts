@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { logAdminAction } from '@/api/adminAuditApi';
 import { logEvent } from '@/api/eventsApi';
 import { updatePersonProfile } from '@/api/peopleApi';
 import { HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { useCrewTrackingController } from '@/controllers/useCrewTrackingController';
 import { useAuthStore } from '@/store/useAuthStore';
-import { Person, PersonProfileChanges, Role } from '@/types/domain';
+import { Person, PersonProfileChanges } from '@/types/domain';
 
 /** Active people first, then alphabetical — deactivated ones collect at the bottom. */
 function byActiveThenName(a: Person, b: Person): number {
@@ -25,6 +26,7 @@ export function useCrewManagementController() {
   const { people, loaded } = useCrewTrackingController();
   const myId = useAuthStore(state => state.profile?.id);
   const myName = useAuthStore(state => state.profile?.name);
+  const iAmSuperadmin = useAuthStore(state => state.profile?.appRole === 'superadmin');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -49,6 +51,13 @@ export function useCrewManagementController() {
       setSaving(true);
       try {
         await updatePersonProfile(person.id, changes);
+        if (myId) {
+          logAdminAction(
+            auditText,
+            { targetType: 'person', targetId: person.id },
+            { id: myId, name: myName ?? '' }
+          );
+        }
         logEvent(`${myName ?? 'The owner'} ${auditText}`, 'info').catch(error =>
           console.warn('[crew] activity log failed —', error)
         );
@@ -59,7 +68,7 @@ export function useCrewManagementController() {
         setSaving(false);
       }
     },
-    [myName]
+    [myId, myName]
   );
 
   const saveJobTitle = useCallback(
@@ -71,8 +80,9 @@ export function useCrewManagementController() {
     [apply]
   );
 
+  // firestore.rules: superadmin-only, owner <-> worker, and the write may touch appRole alone.
   const setAppRole = useCallback(
-    (person: Person, appRole: Role) =>
+    (person: Person, appRole: 'owner' | 'worker') =>
       apply(
         person,
         { appRole },
@@ -93,6 +103,12 @@ export function useCrewManagementController() {
     selectedPerson,
     /** The owner can't change their own role or deactivate themselves. */
     selectedIsMe: selectedPerson != null && selectedPerson.id === myId,
+    /** Only a superadmin grants/revokes owner, never on themselves or another superadmin. */
+    canChangeRole:
+      iAmSuperadmin &&
+      selectedPerson != null &&
+      selectedPerson.id !== myId &&
+      selectedPerson.appRole !== 'superadmin',
     select,
     saveJobTitle,
     setAppRole,

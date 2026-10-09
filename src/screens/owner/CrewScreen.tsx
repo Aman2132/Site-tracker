@@ -35,6 +35,7 @@ export default function CrewScreen() {
             <CrewMemberActions
               person={person}
               isMe={crew.selectedIsMe}
+              canChangeRole={crew.canChangeRole}
               saving={crew.saving}
               error={crew.error}
               onSaveJobTitle={jobTitle => crew.saveJobTitle(person, jobTitle)}

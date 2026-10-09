@@ -95,6 +95,25 @@ export function setLocalPhotoNote(personId: string, id: string, note: string): P
   });
 }
 
+/** Links (or with null, unlinks) a saved capture to an inventory entry. Never rejects. */
+export function setLocalPhotoInventory(
+  personId: string,
+  id: string,
+  inventoryId: string | null
+): Promise<void> {
+  return serialized(async () => {
+    const own = await readList(keyFor(personId));
+    await writeList(
+      personId,
+      own.map(photo => {
+        if (photo.id !== id) return photo;
+        const { inventoryId: _old, ...rest } = photo;
+        return inventoryId ? { ...rest, inventoryId } : rest;
+      })
+    );
+  });
+}
+
 /** Marks the given captures synced in their owner's list. Never rejects. */
 export function markLocalPhotosSynced(personId: string, ids: string[]): Promise<void> {
   const synced = new Set(ids);

@@ -4,7 +4,7 @@
  * in, only src/api/* should need to change.
  */
 
-export type Role = 'owner' | 'worker';
+export type Role = 'owner' | 'worker' | 'superadmin';
 
 /**
  * Coarse activity signal: from Android's activity recognition when it has a
@@ -156,6 +156,8 @@ export interface Photo {
   task: string;
   /** Optional free-text note ("what I am doing"), trimmed, max PHOTO_NOTE.maxChars. Absent when empty. Written to Firestore as `note`. */
   note?: string;
+  /** The person's own inventory entry this photo is proof for (`inventory/{id}`). Set before upload only. */
+  inventoryId?: string;
   synced: boolean;
   /** Site the person was checked in at when this was captured. Absent when not checked in. */
   siteId?: string;
@@ -186,10 +188,21 @@ export interface LocationPermissionState {
   background: boolean;
 }
 
+/** One logged use of a received item — only the entry's own creator may add one. */
+export interface UsageLogEntry {
+  quantity: number;
+  at: number;
+  note?: string;
+}
+
 /**
- * One delivery of one item received at a site (`inventory/{id}`). Crew create
- * these from the Items tab and can never change them; an owner can edit or
- * delete any from the admin dashboard, which stamps `editedAt`.
+ * One delivery of one item received at a site (`inventory/{id}`). Any crew
+ * assigned to the site may read every entry for it and may create one; only
+ * the person who created an entry may log usage against it (consumption is
+ * tracked here, not as a separate doc, so it stays next to what it drew
+ * down). An owner can edit or delete any entry from the admin dashboard,
+ * which stamps `editedAt`; who did it (and their note) is in the
+ * superadmin-only adminAudit trail, not here.
  */
 export interface InventoryEntry {
   id: string;
@@ -199,12 +212,20 @@ export interface InventoryEntry {
   siteId: string;
   /** Item name as typed, e.g. "Cement (OPC 53)". */
   name: string;
+  /** Total in `unit` — for packs, packCount × packSize (5 pieces of 5 m wire = 25 m). Usage is logged in this unit. */
   quantity: number;
   /** One of INVENTORY.units or a custom one typed under "Other". */
   unit: string;
+  /** Set when it arrived as equal pieces/packs: how many, and how much `unit` each holds. Absent for a plain total. */
+  packCount?: number;
+  packSize?: number;
   note?: string;
   /** When it was received (entry time on the phone), epoch ms. */
   receivedAt: number;
+  /** Sum of usage[].quantity; kept alongside the log so "remaining" is a plain subtraction. Absent means 0. */
+  usedQuantity?: number;
+  /** Each time the creator logged how much was used, oldest first. */
+  usage?: UsageLogEntry[];
   /** Set by the admin dashboard when an owner changes the entry. */
   editedAt?: number;
   /** True while the phone has saved it but the server hasn't confirmed it yet. Never stored. */
@@ -212,4 +233,7 @@ export interface InventoryEntry {
 }
 
 /** What the crew fill in; the rest is stamped by the controller. */
-export type InventoryDraft = Pick<InventoryEntry, 'siteId' | 'name' | 'quantity' | 'unit' | 'note'>;
+export type InventoryDraft = Pick<
+  InventoryEntry,
+  'siteId' | 'name' | 'quantity' | 'unit' | 'note' | 'packCount' | 'packSize'
+>;

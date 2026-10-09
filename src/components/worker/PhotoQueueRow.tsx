@@ -79,7 +79,7 @@ export default function PhotoQueueRow({ photo, status, onSync, onEditNote }: Pho
           >
             <Ionicons name="create-outline" size={16} color={colors.primary} />
             <Text style={styles.noteButtonText} numberOfLines={2}>
-              {photo.note ?? 'Add note'}
+              {photo.note ?? (photo.inventoryId ? 'Item linked · add note' : 'Add note / item')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity

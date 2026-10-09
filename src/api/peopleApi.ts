@@ -204,6 +204,8 @@ export async function fetchSiteCrew(siteId: string): Promise<PersonProfile[]> {
 export interface SitePresence {
   paused?: boolean;
   lastFixAt?: number;
+  lat?: number;
+  lng?: number;
 }
 
 /**

@@ -46,8 +46,9 @@ export function cleanNote(input: string, maxChars: number): string {
  * What background sync should upload now: this person's unsynced captures,
  * minus the one whose note is being typed (its record can't be edited once uploaded).
  */
-export function autoSyncable(photos: Photo[], personId: string, editingId: string | null): Photo[] {
-  return photos.filter(photo => !photo.synced && photo.personId === personId && photo.id !== editingId);
+export function autoSyncable(photos: Photo[], personId: string, heldIds: string[]): Photo[] {
+  const held = new Set(heldIds);
+  return photos.filter(photo => !photo.synced && photo.personId === personId && !held.has(photo.id));
 }
 
 const LOCAL_ID = /^local-(\d+)-([a-z0-9]+)$/;
@@ -155,4 +156,10 @@ export function mergePhotoLists(local: Photo[], remote: Photo[]): Photo[] {
   );
   const remoteOnly = remote.filter(photo => !localKeys.has(captureKey(photo)));
   return [...localShown, ...remoteOnly].sort((a, b) => b.takenAt - a.takenAt);
+}
+
+/** The value when every item has the same one, else '' (a batch with mixed notes starts blank). */
+export function sharedValue(values: (string | undefined)[]): string {
+  const first = values[0] ?? '';
+  return values.every(value => (value ?? '') === first) ? first : '';
 }
