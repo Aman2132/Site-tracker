@@ -1,8 +1,11 @@
 export type OwnerTabParamList = {
   Map: undefined;
-  Crew: undefined;
+  /** personId opens that person's sheet (tap-through from Activity). */
+  Crew: { personId?: string } | undefined;
   Camera: undefined;
-  Photos: undefined;
+  /** personId narrows the grid to that person (tap-through from Activity). */
+  Photos: { personId?: string } | undefined;
+  Activity: undefined;
   Profile: undefined;
 };
 

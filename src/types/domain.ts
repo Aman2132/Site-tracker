@@ -125,6 +125,8 @@ export interface Person extends PersonProfile {
   /** 0–1; undefined until the phone reports one (older app builds never do). */
   battery?: number;
   paused: boolean;
+  /** Site they are checked in at right now; absent when checked out. */
+  siteId?: string;
 }
 
 /** What a capture is. Records saved before video existed have no `mediaType` — treat those as photos. */
@@ -187,6 +189,12 @@ export interface LocationPermissionState {
   granted: boolean;
   background: boolean;
 }
+
+/** A runtime permission as the Settings card shows it. 'blocked' = refused for good: only Android Settings can change it now. */
+export type PermissionAccess = 'granted' | 'ask' | 'blocked';
+
+/** Location access, split so the Settings card can tell "always" (background tracking works) from "while using". */
+export type LocationAccess = 'always' | 'whileUsing' | Exclude<PermissionAccess, 'granted'>;
 
 /** One logged use of a received item — only the entry's own creator may add one. */
 export interface UsageLogEntry {

@@ -7,7 +7,7 @@ import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 import { PhotoSyncStatus } from '@/store/usePhotoStore';
 import { Photo } from '@/types/domain';
 import { formatDuration } from '@/utils/camera';
-import { formatAccuracy } from '@/utils/formatters';
+import { formatAccuracy, formatDayTime } from '@/utils/formatters';
 
 interface PhotoQueueRowProps {
   photo: Photo;
@@ -39,7 +39,7 @@ export default function PhotoQueueRow({ photo, status, onSync, onEditNote }: Pho
           </Text>
           <Text style={styles.meta}>{photo.plusCode}</Text>
           <Text style={styles.meta}>
-            {new Date(photo.takenAt).toLocaleTimeString()} ·{' '}
+            {formatDayTime(photo.takenAt)} ·{' '}
             {photo.synced
               ? 'uploaded'
               : uploading

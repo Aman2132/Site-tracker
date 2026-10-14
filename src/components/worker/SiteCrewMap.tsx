@@ -76,7 +76,7 @@ export default function SiteCrewMap({ crew, me, now, fill }: SiteCrewMapProps) {
             description={
               member.status === 'here'
                 ? `Here now · ${member.role}`
-                : `No signal · last seen ${member.position?.lastFixAt ? timeAgo(now - member.position.lastFixAt) : 'a while ago'}`
+                : `No signal · last seen ${member.position?.lastFixAt ? timeAgo(member.position.lastFixAt, now) : 'a while ago'}`
             }
             opacity={member.status === 'here' ? 1 : 0.55}
           />

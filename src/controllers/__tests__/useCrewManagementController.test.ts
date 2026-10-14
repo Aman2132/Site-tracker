@@ -13,6 +13,7 @@ jest.mock('@/api/peopleApi', () => ({ updatePersonProfile: jest.fn(async () => u
 jest.mock('@/api/adminAuditApi', () => ({ logAdminAction: jest.fn(async () => undefined) }));
 jest.mock('@/api/eventsApi', () => ({ logEvent: jest.fn(async () => undefined) }));
 jest.mock('@/controllers/useCrewTrackingController', () => ({ useCrewTrackingController: jest.fn() }));
+jest.mock('@/api/sitesApi', () => ({ fetchSitesByIds: jest.fn(async () => []) }));
 
 function person(overrides: Partial<Person>): Person {
   return {

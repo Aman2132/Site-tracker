@@ -8,12 +8,14 @@ import { Camera } from 'react-native-vision-camera';
 import CameraModeSwitch from '@/components/worker/CameraModeSwitch';
 import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
 import CameraProblemOverlay from '@/components/worker/CameraProblemOverlay';
+import CameraRoundButton from '@/components/worker/CameraRoundButton';
 import CameraShutterButton from '@/components/worker/CameraShutterButton';
 import CameraZoomControl from '@/components/worker/CameraZoomControl';
-import CaptureTray from '@/components/worker/CaptureTray';
 import CaptureToast from '@/components/worker/CaptureToast';
+import CaptureTray from '@/components/worker/CaptureTray';
 import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
+import LastCaptureThumb from '@/components/worker/LastCaptureThumb';
 import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
 import RecordingBadge from '@/components/worker/RecordingBadge';
 import TaskEditorSheet from '@/components/worker/TaskEditorSheet';
@@ -56,6 +58,12 @@ function CameraView() {
     zoom,
     zoomStops,
     setZoom,
+    flash,
+    flashSupported,
+    cycleFlash,
+    torch,
+    canFlip,
+    flip,
     attempt,
     problem,
     retry,
@@ -73,7 +81,7 @@ function CameraView() {
     liveAccuracy,
     hasFix,
   } = useCameraController(task);
-  const { tray } = useCaptureTrayController(lastCaptureId);
+  const { tray, lastPhoto, photosTab } = useCaptureTrayController(lastCaptureId);
   const {
     editing,
     sharedNote,
@@ -106,6 +114,7 @@ function CameraView() {
             device={device}
             format={format}
             zoom={zoom}
+            torch={torch}
             isActive={isActive}
             photo={mode === 'photo'}
             video={mode === 'video'}
@@ -158,6 +167,17 @@ function CameraView() {
         <Ionicons name="create-outline" size={13} color={colors.onGlassMuted} />
       </TouchableOpacity>
 
+      {flashSupported && (
+        <View style={[styles.flashButton, { top: insets.top + spacing.sm }]}>
+          <CameraRoundButton
+            icon={FLASH_ICONS[flash]}
+            caption={flash === 'auto' ? 'AUTO' : undefined}
+            onPress={cycleFlash}
+            accessibilityLabel={`Flash ${flash}. Tap to change`}
+          />
+        </View>
+      )}
+
       <View style={[styles.accuracyBar, { top: insets.top + spacing.sm + 40 }]}>
         {isRecording ? (
           <RecordingBadge elapsedMs={recordingMs} maxMs={CAMERA.maxVideoSeconds * 1000} />
@@ -174,12 +194,29 @@ function CameraView() {
           onSelect={setZoom}
         />
         <CameraModeSwitch mode={mode} onChange={setMode} disabled={isRecording} />
-        <CameraShutterButton
-          onPress={onShutter}
-          mode={mode}
-          recording={isRecording}
-          disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
-        />
+        <View style={styles.shutterRow}>
+          <LastCaptureThumb
+            photo={lastPhoto}
+            onPress={() => navigation.navigate(photosTab as never)}
+            disabled={isRecording}
+          />
+          <CameraShutterButton
+            onPress={onShutter}
+            mode={mode}
+            recording={isRecording}
+            disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
+          />
+          {canFlip ? (
+            <CameraRoundButton
+              icon="camera-reverse-outline"
+              onPress={flip}
+              disabled={isRecording}
+              accessibilityLabel="Switch between front and back camera"
+            />
+          ) : (
+            <View style={styles.flipPlaceholder} />
+          )}
+        </View>
       </View>
 
       <CaptureToast
@@ -221,6 +258,8 @@ function CameraView() {
     </View>
   );
 }
+
+const FLASH_ICONS = { off: 'flash-off', auto: 'flash-outline', on: 'flash' } as const;
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.black },
@@ -268,6 +307,15 @@ const styles = StyleSheet.create({
   },
   taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
   accuracyBar: { position: 'absolute', alignSelf: 'center' },
+  flashButton: { position: 'absolute', right: spacing.md },
+  shutterRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xxl,
+  },
+  flipPlaceholder: { width: 44, height: 44 },
   controls: {
     position: 'absolute',
     bottom: 44,

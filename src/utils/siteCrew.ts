@@ -1,4 +1,5 @@
-import { PersonProfile } from '@/types/domain';
+import { Person, PersonProfile } from '@/types/domain';
+import { timeAgo } from '@/utils/formatters';
 
 /** Where a crew member is relative to the site, for the Home screen's crew card. */
 export type CrewStatus = 'here' | 'paused' | 'noSignal' | 'away';
@@ -78,3 +79,18 @@ export const myPosition = (presence: Record<string, CrewPresence>, myId: string)
 
 /** How many of the crew are actually on site with me right now. */
 export const hereCount = (crew: SiteCrewMember[]) => crew.filter(member => member.status === 'here').length;
+
+/**
+ * Owner crew list subtitle: status plus where/when — "On site · Tower B",
+ * "Offline · Yesterday, 2:47 PM". GPS accuracy is left out on purpose; to an
+ * owner it is noise (and the 9999 m placeholder read like an error).
+ */
+export function crewSubtitle(person: Person, siteName: string | undefined, now: number): string {
+  if (person.active === false) return 'Deactivated';
+  if (person.lastFixAt <= 0) return 'Offline · never seen';
+  const seen = timeAgo(person.lastFixAt, now);
+  if (person.paused) return `Paused · ${seen}`;
+  if (person.kind === 'stale') return `Offline · ${seen}`;
+  if (person.siteId) return `On site · ${siteName ?? 'Unknown site'}`;
+  return 'Online · not checked in';
+}

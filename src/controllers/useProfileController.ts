@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { updateOwnProfile } from '@/api/peopleApi';
 import { HAS_FIREBASE_CONFIG, PROFILE } from '@/constants/config';
 import { performSignOut } from '@/controllers/useAuthController';
+import { useSettingsController } from '@/controllers/useSettingsController';
 import { currentUserEmail } from '@/services/authService';
 import { pickAvatarImage } from '@/services/avatarService';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -19,6 +20,7 @@ export function useProfileController() {
   const setProfile = useAuthStore(state => state.setProfile);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const settings = useSettingsController();
 
   const save = useCallback(
     async (changes: OwnProfileChanges) => {
@@ -76,5 +78,6 @@ export function useProfileController() {
     changeAvatar,
     removeAvatar,
     signOut,
+    settings,
   };
 }

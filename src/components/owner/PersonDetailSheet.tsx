@@ -29,22 +29,24 @@ const ACTIVITY_ICON: Record<ActivityKind, IconName> = {
 interface PersonDetailSheetProps {
   person: Person;
   onClose: () => void;
+  /** Opens the last known position in the phone's maps app. Hidden for someone with no position yet. */
+  onOpenMaps?: () => void;
   /** Extra section under the details — the Crew screen puts the owner's edit controls here. */
   children?: ReactNode;
 }
 
 /**
- * Full field set: activity, coordinates, time since fix, accuracy, battery,
+ * Full field set: activity, time since fix, accuracy, battery, a maps link,
  * and an explicit stale/paused banner rather than presenting a last-known
  * point as if it were live.
  */
-export default function PersonDetailSheet({ person, onClose, children }: PersonDetailSheetProps) {
+export default function PersonDetailSheet({ person, onClose, onOpenMaps, children }: PersonDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const isStale = person.kind === 'stale' || person.paused;
   // lastFixAt is 0 for someone who has never reported a position (see
   // peopleApi.ts) — timeAgo(Date.now() - 0) would read as ~56,000 years.
   const hasFix = person.lastFixAt > 0;
-  const updatedLabel = hasFix ? timeAgo(Date.now() - person.lastFixAt) : 'Never';
+  const updatedLabel = hasFix ? timeAgo(person.lastFixAt) : 'Never';
   const batteryIcon: IconName =
     person.battery == null
       ? 'battery-full-outline'
@@ -99,12 +101,18 @@ export default function PersonDetailSheet({ person, onClose, children }: PersonD
         <Row icon={batteryIcon} label="Battery" value={formatBatteryPercent(person.battery)} />
       </View>
 
-      <View style={styles.coordRow}>
-        <Ionicons name="pin-outline" size={13} color={colors.textFaint} />
-        <Text style={styles.coordText}>
-          {person.lat.toFixed(6)}, {person.lng.toFixed(6)}
-        </Text>
-      </View>
+      {hasFix && onOpenMaps && (
+        <TouchableOpacity
+          style={styles.mapsButton}
+          onPress={onOpenMaps}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${person.name}'s last position in Maps`}
+        >
+          <Ionicons name="navigate-outline" size={15} color={colors.primary} />
+          <Text style={styles.mapsText}>Open in Maps</Text>
+        </TouchableOpacity>
+      )}
 
       {children}
     </View>
@@ -191,12 +199,15 @@ const styles = StyleSheet.create({
   rowIcon: { width: 22 },
   rowLabel: { fontFamily: fontFamily.regular, flex: 1, color: colors.textMuted, fontSize: 13 },
   rowValue: { fontFamily: fontFamily.bold, color: colors.text, fontSize: 13 },
-  coordRow: {
+  mapsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
     justifyContent: 'center',
-    marginTop: spacing.lg,
+    gap: spacing.xs + 2,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
   },
-  coordText: { ...typography.mono, fontSize: 11, color: colors.textFaint },
+  mapsText: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
 });

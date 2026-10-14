@@ -1,4 +1,12 @@
-import { clampZoom, formatDuration, pinchZoom, touchDistance, zoomLabel, zoomStops } from '@/utils/camera';
+import {
+  clampZoom,
+  formatDuration,
+  nextFlash,
+  pinchZoom,
+  touchDistance,
+  zoomLabel,
+  zoomStops,
+} from '@/utils/camera';
 
 describe('clampZoom', () => {
   it('leaves an in-range zoom alone', () => {
@@ -114,5 +122,19 @@ describe('formatDuration', () => {
 
   it('treats a negative clock skew as zero', () => {
     expect(formatDuration(-500)).toBe('00:00');
+  });
+});
+
+describe('nextFlash', () => {
+  it('cycles off, auto, on, off for photos', () => {
+    expect(nextFlash('off', 'photo')).toBe('auto');
+    expect(nextFlash('auto', 'photo')).toBe('on');
+    expect(nextFlash('on', 'photo')).toBe('off');
+  });
+
+  it('only toggles off/on for video, which has no auto torch', () => {
+    expect(nextFlash('off', 'video')).toBe('on');
+    expect(nextFlash('on', 'video')).toBe('off');
+    expect(nextFlash('auto', 'video')).toBe('on');
   });
 });

@@ -45,28 +45,42 @@ export interface SiteOption {
 }
 
 /**
- * One chip per site that appears in `photos` (sorted by name, with its photo
- * count), led by "All sites" and closed by "No site" when some captures were
- * taken while not checked in. Unknown site ids (deleted, or names not loaded
- * yet) read as "Unknown site".
+ * One chip per site that appears in `photos` (sorted by name), led by "All
+ * sites" and closed by "No site" when some captures were taken while not
+ * checked in. Counts come from `counted` — the photos inside the chosen date
+ * window — so a chip says how many photos picking it will show; a site with
+ * none in that window stays (with 0) instead of jumping away. Unknown site ids
+ * (deleted, or names not loaded yet) read as "Unknown site".
  */
-export function siteOptions(photos: Photo[], siteNames: Record<string, string>): SiteOption[] {
-  const counts = new Map<string, number>();
-  let withoutSite = 0;
+export function siteOptions(
+  photos: Photo[],
+  siteNames: Record<string, string>,
+  counted: Photo[] = photos
+): SiteOption[] {
+  const ids = new Set<string>();
+  let anyWithoutSite = false;
   for (const photo of photos) {
-    if (photo.siteId) counts.set(photo.siteId, (counts.get(photo.siteId) ?? 0) + 1);
-    else withoutSite++;
+    if (photo.siteId) ids.add(photo.siteId);
+    else anyWithoutSite = true;
   }
-  const sites = Array.from(counts, ([id, count]) => ({
-    id,
-    name: siteNames[id] ?? 'Unknown site',
-    count,
-  })).sort((a, b) => a.name.localeCompare(b.name));
+  const countOf = (match: (photo: Photo) => boolean) => counted.filter(match).length;
+  const sites = Array.from(ids, id => ({ id, name: siteNames[id] ?? 'Unknown site' })).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
   return [
-    { id: ALL_SITES, label: `All sites · ${photos.length}` },
-    ...sites.map(site => ({ id: site.id, label: `${site.name} · ${site.count}` })),
-    ...(withoutSite > 0 ? [{ id: NO_SITE, label: `No site · ${withoutSite}` }] : []),
+    { id: ALL_SITES, label: `All sites · ${counted.length}` },
+    ...sites.map(site => ({ id: site.id, label: `${site.name} · ${countOf(p => p.siteId === site.id)}` })),
+    ...(anyWithoutSite ? [{ id: NO_SITE, label: `No site · ${countOf(p => !p.siteId)}` }] : []),
   ];
+}
+
+/** The date chips, each with how many of `photos` (already narrowed to the chosen site) it would show. */
+export function dateOptions(photos: Photo[], now: number): { id: DateRange; label: string }[] {
+  return DATE_RANGES.map(range => {
+    const from = rangeStart(range.id, now);
+    const count = from === null ? photos.length : photos.filter(photo => photo.takenAt >= from).length;
+    return { id: range.id, label: `${range.label} · ${count}` };
+  });
 }
 
 /** The distinct site ids in a photo list, sorted, so it can be used as a stable effect key. */

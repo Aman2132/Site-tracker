@@ -314,3 +314,64 @@ describe('photo vs video', () => {
     expect(result.current.audioEnabled).toBe(false);
   });
 });
+
+describe('flash', () => {
+  const withFlash = { ...device, hasFlash: true, hasTorch: true };
+
+  it('is hidden on a lens without a flash, and never sent to it', () => {
+    const { result } = mount();
+
+    act(() => result.current.cycleFlash());
+
+    expect(result.current.flashSupported).toBe(false);
+    expect(result.current.flash).toBe('off');
+  });
+
+  it('cycles off, auto, on for photos, with the torch staying off', () => {
+    (useCameraDevice as jest.Mock).mockReturnValue(withFlash);
+    const { result } = mount();
+
+    act(() => result.current.cycleFlash());
+    expect(result.current.flash).toBe('auto');
+    act(() => result.current.cycleFlash());
+    expect(result.current.flash).toBe('on');
+    expect(result.current.torch).toBe('off');
+  });
+
+  it('turns into a torch in video mode, dropping auto', () => {
+    (useCameraDevice as jest.Mock).mockReturnValue(withFlash);
+    const { result } = mount();
+    act(() => result.current.cycleFlash());
+
+    act(() => result.current.setMode('video'));
+    expect(result.current.flash).toBe('off');
+
+    act(() => result.current.cycleFlash());
+    expect(result.current.torch).toBe('on');
+  });
+});
+
+describe('front / back flip', () => {
+  const front = { id: 'front-1', minZoom: 1, maxZoom: 2, neutralZoom: 1 };
+
+  it('switches to the front lens and back again', () => {
+    (useCameraDevice as jest.Mock).mockImplementation(position => (position === 'front' ? front : device));
+    const { result } = mount();
+    expect(result.current.canFlip).toBe(true);
+
+    act(() => result.current.flip());
+    expect(result.current.device).toBe(front);
+
+    act(() => result.current.flip());
+    expect(result.current.device).toBe(device);
+  });
+
+  it('offers no flip on a phone with one lens', () => {
+    (useCameraDevice as jest.Mock).mockImplementation(position =>
+      position === 'front' ? undefined : device
+    );
+    const { result } = mount();
+
+    expect(result.current.canFlip).toBe(false);
+  });
+});

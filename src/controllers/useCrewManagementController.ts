@@ -5,8 +5,11 @@ import { logEvent } from '@/api/eventsApi';
 import { updatePersonProfile } from '@/api/peopleApi';
 import { HAS_FIREBASE_CONFIG } from '@/constants/config';
 import { useCrewTrackingController } from '@/controllers/useCrewTrackingController';
+import { useSiteNamesController } from '@/controllers/useSiteNamesController';
+import { openInMaps } from '@/services/linkingService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { Person, PersonProfileChanges } from '@/types/domain';
+import { crewSubtitle } from '@/utils/siteCrew';
 
 /** Active people first, then alphabetical — deactivated ones collect at the bottom. */
 function byActiveThenName(a: Person, b: Person): number {
@@ -33,6 +36,12 @@ export function useCrewManagementController() {
   const [error, setError] = useState<string | null>(null);
 
   const crew = useMemo(() => [...people].sort(byActiveThenName), [people]);
+  const siteNames = useSiteNamesController(people.map(person => person.siteId));
+  const subtitleOf = useCallback(
+    (person: Person) =>
+      crewSubtitle(person, person.siteId ? siteNames[person.siteId] : undefined, Date.now()),
+    [siteNames]
+  );
   // Looked up live, so the sheet shows each saved change as soon as it lands.
   const selectedPerson = crew.find(person => person.id === selectedId) ?? null;
 
@@ -100,6 +109,10 @@ export function useCrewManagementController() {
   return {
     crew,
     loaded,
+    subtitleOf,
+    /** Last known position in the phone's maps app; nothing for someone who never reported one. */
+    openInMaps: (person: Person) =>
+      person.lastFixAt > 0 ? openInMaps(person.lat, person.lng, person.name) : Promise.resolve(),
     selectedPerson,
     /** The owner can't change their own role or deactivate themselves. */
     selectedIsMe: selectedPerson != null && selectedPerson.id === myId,

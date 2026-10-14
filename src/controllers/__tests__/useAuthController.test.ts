@@ -26,6 +26,7 @@ jest.mock('@/services/authService', () => ({
 }));
 jest.mock('@/services/pushService', () => ({
   registerForPushNotifications: jest.fn(async () => null),
+  loadNotificationsEnabled: jest.fn(async () => true),
 }));
 jest.mock('@/controllers/useCrewTrackingController', () => ({ stopCrewSubscription: jest.fn() }));
 jest.mock('@/controllers/useActivityFeedController', () => ({ stopEventsSubscription: jest.fn() }));

@@ -4,6 +4,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ProfileAvatarEditor from '@/components/common/ProfileAvatarEditor';
+import SettingsCard from '@/components/common/SettingsCard';
 import SignOutButton from '@/components/common/SignOutButton';
 import { KEYBOARD, PROFILE } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/constants/theme';
@@ -12,7 +13,8 @@ import { hasOwnerAccess, roleLabel } from '@/utils/roles';
 
 /** Profile tab, for owners and workers: their own name and photo, account details, sign out. */
 export default function ProfileScreen() {
-  const { profile, email, saving, error, saveName, changeAvatar, removeAvatar } = useProfileController();
+  const { profile, email, saving, error, saveName, changeAvatar, removeAvatar, settings } =
+    useProfileController();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(profile?.name ?? '');
   useEffect(() => setName(profile?.name ?? ''), [profile?.name]);
@@ -85,6 +87,17 @@ export default function ProfileScreen() {
           <DetailRow key={label} label={label} value={value} last={index === details.length - 1} />
         ))}
       </View>
+
+      <SettingsCard
+        version={settings.version}
+        location={settings.location}
+        onLocationAction={settings.onLocationAction}
+        notificationsOn={settings.notificationsOn}
+        notificationAccess={settings.notificationAccess}
+        onNotificationsChange={settings.setNotifications}
+        busy={settings.busy}
+        accent={accent}
+      />
 
       <SignOutButton style={styles.signOut} />
     </KeyboardAwareScrollView>

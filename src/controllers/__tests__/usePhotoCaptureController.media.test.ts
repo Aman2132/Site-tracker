@@ -76,6 +76,17 @@ describe('photo capture guard', () => {
     expect(usePhotoStore.getState().photos[0].mediaType).toBe('photo');
   });
 
+  it('fires the flash as chosen, and keeps it off by default', async () => {
+    const { result } = renderHook(() => usePhotoCaptureController());
+    const takePhoto = (photoCamera as unknown as { takePhoto: jest.Mock }).takePhoto;
+
+    await act(() => result.current.capturePhoto(photoCamera, 'Task', 'auto'));
+    expect(takePhoto).toHaveBeenLastCalledWith({ flash: 'auto' });
+
+    await act(() => result.current.capturePhoto(photoCamera, 'Task'));
+    expect(takePhoto).toHaveBeenLastCalledWith({ flash: 'off' });
+  });
+
   it('ignores a second shutter press while the first photo is still being processed', async () => {
     // A 12 MP photo is ~5 MB of base64 in JS memory; two in parallel is a spike.
     let release: (value: Shot) => void = () => {};

@@ -2,6 +2,7 @@ import { Photo } from '@/types/domain';
 import {
   ALL_SITES,
   NO_SITE,
+  dateOptions,
   filterPhotos,
   rangeStart,
   siteIdsIn,
@@ -95,5 +96,33 @@ describe('siteIdsIn', () => {
     expect(
       siteIdsIn([photo({ siteId: 'b' }), photo({ siteId: 'a' }), photo({ siteId: 'b' }), photo({})])
     ).toEqual(['a', 'b']);
+  });
+});
+
+describe('filter chip counts follow the other filter', () => {
+  const photos = [
+    photo({ id: '1', siteId: 'a', takenAt: NOW }),
+    photo({ id: '2', siteId: 'a', takenAt: NOW - 3 * DAY }),
+    photo({ id: '3', siteId: 'b', takenAt: NOW - 40 * DAY }),
+  ];
+
+  it('site chips count only photos inside the date window, keeping sites with none at 0', () => {
+    const today = filterPhotos(photos, ALL_SITES, 'today', NOW);
+    expect(siteOptions(photos, { a: 'Alpha', b: 'Bravo' }, today).map(o => o.label)).toEqual([
+      'All sites · 1',
+      'Alpha · 1',
+      'Bravo · 0',
+    ]);
+  });
+
+  it('date chips count photos at the chosen site', () => {
+    const atAlpha = filterPhotos(photos, 'a', 'all', NOW);
+    expect(dateOptions(atAlpha, NOW).map(o => o.label)).toEqual([
+      'All time · 2',
+      'Today · 1',
+      'Last 7 days · 2',
+      'Last 30 days · 2',
+    ]);
+    expect(dateOptions(photos, NOW)[0].label).toBe('All time · 3');
   });
 });

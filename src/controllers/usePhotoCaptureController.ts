@@ -15,7 +15,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { useShiftStore } from '@/store/useShiftStore';
 import { GeoFix, Photo } from '@/types/domain';
-import { formatDuration } from '@/utils/camera';
+import { FlashMode, formatDuration } from '@/utils/camera';
 import { plusCodeFor } from '@/utils/geo';
 import { captureFileName, displaySize, newLocalPhotoId } from '@/utils/photos';
 
@@ -174,7 +174,7 @@ export function usePhotoCaptureController() {
   );
 
   const capturePhoto = useCallback(
-    async (camera: Camera, task: string) => {
+    async (camera: Camera, task: string, flash: FlashMode = 'off') => {
       if (!myId || savingRef.current) return;
       // Never geotag from a guess: with no GPS fix yet there is nothing true to write.
       if (!liveFixRef.current) {
@@ -186,7 +186,7 @@ export function usePhotoCaptureController() {
       setIsSaving(true);
       try {
         console.log(`${TAG} takePhoto: start`);
-        const photo = await camera.takePhoto();
+        const photo = await camera.takePhoto({ flash });
         if (!photo) return;
         console.log(`${TAG} takePhoto: ${photo.path} ${photo.width}x${photo.height}`);
 

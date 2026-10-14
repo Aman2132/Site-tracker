@@ -7,7 +7,7 @@ import { stopEventsSubscription } from '@/controllers/useActivityFeedController'
 import { stopCrewSubscription } from '@/controllers/useCrewTrackingController';
 import { endShiftOnSignOut } from '@/controllers/useShiftController';
 import { currentUserId, onAuthChange, signIn, signOutUser, signUp } from '@/services/authService';
-import { registerForPushNotifications } from '@/services/pushService';
+import { loadNotificationsEnabled, registerForPushNotifications } from '@/services/pushService';
 import { stopSharing } from '@/services/sharingService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { PersonProfile, Role } from '@/types/domain';
@@ -57,8 +57,10 @@ async function admit(uid: string): Promise<Admission> {
   return { profile };
 }
 
+/** Skipped when the person switched notifications off in Settings. */
 function registerPush(uid: string): void {
-  registerForPushNotifications()
+  loadNotificationsEnabled()
+    .then(enabled => (enabled ? registerForPushNotifications() : null))
     .then(token => (token ? savePushToken(uid, token) : undefined))
     .catch(error => console.warn('[auth] push registration failed —', error));
 }

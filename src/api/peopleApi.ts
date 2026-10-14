@@ -9,6 +9,7 @@ import {
 } from 'firebase/database';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -65,6 +66,7 @@ function mergePersonProfile(profile: PersonProfile, live: LivePosition | undefin
     battery: live?.battery,
     paused: live?.paused ?? false,
     kind: isStale ? 'stale' : (live?.kind ?? 'still'),
+    ...(live?.siteId ? { siteId: live.siteId } : {}),
   };
 }
 
@@ -229,4 +231,9 @@ export function subscribeToSitePresence(
 /** Saves this device's Expo push token so a future server-side notifier can reach it. */
 export async function savePushToken(personId: string, expoPushToken: string): Promise<void> {
   await setDoc(doc(firestore, 'pushTokens', personId), { expoPushToken, updatedAt: Date.now() });
+}
+
+/** Forgets this person's push token, so nothing is sent to them (notifications switched off in Settings). */
+export async function deletePushToken(personId: string): Promise<void> {
+  await deleteDoc(doc(firestore, 'pushTokens', personId));
 }

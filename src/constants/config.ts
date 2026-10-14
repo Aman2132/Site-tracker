@@ -117,6 +117,20 @@ export const LOCAL_MEDIA = {
   maxTaskChars: 60,
 };
 
+/** Owner's full-size photo viewer. */
+export const PHOTO_VIEWER = {
+  maxZoom: 5,
+  /** Double-tap jumps to this zoom (and back to 1× from anything above it). */
+  doubleTapZoom: 2.5,
+  doubleTapMs: 300,
+};
+
+/** Owner Activity feed. */
+export const ACTIVITY_FEED = {
+  /** The same event text repeated within this window is shown once, as "×2". */
+  mergeWindowMs: 10 * 60_000,
+};
+
 /** Home screen "Crew at this site" card. */
 export const SITE_CREW = {
   /** A checked-in person with no position fix for this long is shown as "no signal" rather than here. */

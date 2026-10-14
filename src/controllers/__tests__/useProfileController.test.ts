@@ -11,6 +11,7 @@ jest.mock('@/api/peopleApi', () => ({ updateOwnProfile: jest.fn(async () => unde
 jest.mock('@/services/avatarService', () => ({ pickAvatarImage: jest.fn() }));
 jest.mock('@/services/authService', () => ({ currentUserEmail: jest.fn(() => 'pooja@site.com') }));
 jest.mock('@/controllers/useAuthController', () => ({ performSignOut: jest.fn(async () => undefined) }));
+jest.mock('@/controllers/useSettingsController', () => ({ useSettingsController: () => ({}) }));
 
 const me: PersonProfile = {
   id: 'worker-9',

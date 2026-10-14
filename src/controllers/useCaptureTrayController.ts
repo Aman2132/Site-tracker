@@ -1,8 +1,12 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo } from 'react';
 
+import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
+
+import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { Photo } from '@/types/domain';
+import { hasOwnerAccess } from '@/utils/roles';
 
 /**
  * The camera's capture tray: everything shot during this camera visit, so the
@@ -11,8 +15,12 @@ import { Photo } from '@/types/domain';
  * until the camera closes; then they upload as usual.
  */
 export function useCaptureTrayController(lastCaptureId: string | null) {
+  // Loads the saved list if nothing has yet (an owner can open the camera
+  // straight from the Map tab), so the last-photo thumbnail has something to show.
+  usePhotoQueueController();
   const trayIds = usePhotoStore(state => state.trayIds);
   const photos = usePhotoStore(state => state.photos);
+  const profile = useAuthStore(state => state.profile);
 
   useEffect(() => {
     if (lastCaptureId) usePhotoStore.getState().addToTray(lastCaptureId);
@@ -30,5 +38,19 @@ export function useCaptureTrayController(lastCaptureId: string | null) {
     [trayIds, photos]
   );
 
-  return { tray };
+  /** The viewfinder's last-photo thumbnail: this person's newest capture, synced or not. */
+  const lastPhoto = useMemo(
+    () =>
+      photos.reduce<Photo | null>(
+        (newest, photo) =>
+          photo.personId === profile?.id && (!newest || photo.takenAt > newest.takenAt) ? photo : newest,
+        null
+      ),
+    [photos, profile?.id]
+  );
+
+  /** Where the thumbnail leads: owners and workers name their photos tab differently. */
+  const photosTab = profile && hasOwnerAccess(profile.appRole) ? 'Photos' : 'MyPhotos';
+
+  return { tray, lastPhoto, photosTab };
 }
