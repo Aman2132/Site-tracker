@@ -1,8 +1,11 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import { ACTIVITY_THRESHOLDS, LOCATION_TASK_NAME, LOCATION_TRACKING } from '@/constants/config';
-import { ActivityKind, GeoFix } from '@/types/domain';
+import { GEOTAG_ACCURACY, LOCATION_TASK_NAME, LOCATION_TRACKING } from '@/constants/config';
+import { latestRecognizedActivity } from '@/services/activityRecognitionService';
+import { readBatteryLevel } from '@/services/batteryService';
+import { GeoFix, TrackedFix } from '@/types/domain';
+import { resolveActivity } from '@/utils/activity';
 
 /**
  * Wraps expo-location + expo-task-manager. Registers one background task at
@@ -10,7 +13,7 @@ import { ActivityKind, GeoFix } from '@/types/domain';
  * headless) and exposes a single update handler that controllers subscribe to.
  */
 
-type LocationUpdateHandler = (fix: GeoFix) => void;
+type LocationUpdateHandler = (fix: TrackedFix) => void;
 
 let onUpdate: LocationUpdateHandler | null = null;
 
@@ -18,13 +21,20 @@ export function setLocationUpdateHandler(handler: LocationUpdateHandler | null):
   onUpdate = handler;
 }
 
-TaskManager.defineTask(LOCATION_TASK_NAME, ({ data, error }) => {
+TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) return;
   const locations = (data as { locations?: Location.LocationObject[] } | undefined)?.locations;
   const fix = locations?.[0];
-  if (fix && onUpdate) {
-    onUpdate({ lat: fix.coords.latitude, lng: fix.coords.longitude, accuracy: fix.coords.accuracy ?? 9999 });
-  }
+  const handler = onUpdate;
+  if (!fix || !handler) return;
+  const battery = await readBatteryLevel();
+  handler({
+    lat: fix.coords.latitude,
+    lng: fix.coords.longitude,
+    accuracy: fix.coords.accuracy ?? 9999,
+    kind: resolveActivity(latestRecognizedActivity(), fix.coords.speed, Date.now()),
+    ...(battery != null ? { battery } : {}),
+  });
 });
 
 export async function startBackgroundTracking(): Promise<void> {
@@ -48,18 +58,105 @@ export async function stopBackgroundTracking(): Promise<void> {
   if (started) await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
 }
 
-export async function getCurrentFix(): Promise<GeoFix> {
-  const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.BestForNavigation });
-  return { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? 9999 };
+/**
+ * One reading of where this phone is now, for the owner map's "my location"
+ * button. Falls back to the last known position if a fresh fix doesn't come
+ * quickly (indoors); null if there's neither.
+ */
+export async function getCurrentPosition(): Promise<GeoFix | null> {
+  const toFix = (loc: Location.LocationObject): GeoFix => ({
+    lat: loc.coords.latitude,
+    lng: loc.coords.longitude,
+    accuracy: loc.coords.accuracy ?? 9999,
+  });
+  const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(
+    () => null
+  );
+  if (fresh) return toFix(fresh);
+  const last = await Location.getLastKnownPositionAsync().catch(() => null);
+  return last ? toFix(last) : null;
 }
 
 /**
- * Rough activity classification from recent speed. A production build should
- * feed this from expo-sensors / Android ActivityRecognition instead.
+ * Continuous high-accuracy GPS stream for the Camera screen's live accuracy
+ * readout — deliberately separate from the battery-conscious background
+ * task above (Balanced accuracy, 15s interval) so all-day tracking power
+ * use is unaffected. Callers start this on screen focus and stop it on
+ * blur/unmount.
+ *
+ * It is self-healing, because a one-shot subscription is what used to leave
+ * the badge stuck until the camera was closed and reopened:
+ *  - if the subscription fails (permission not granted yet on first launch,
+ *    location services off), it retries every few seconds until it works;
+ *  - if the stream goes quiet (the OS stalls GPS after a screen change), a
+ *    watchdog tears it down and resubscribes.
+ *
+ * (A cached "last known" position is deliberately NOT used to seed it: it can
+ * be minutes old, and a photo must never be geotagged with a stale location.)
  */
-export function classifyActivity(speedMetersPerSecond: number | null | undefined): ActivityKind {
-  if (speedMetersPerSecond == null) return 'still';
-  if (speedMetersPerSecond > ACTIVITY_THRESHOLDS.vehicleSpeedMps) return 'vehicle';
-  if (speedMetersPerSecond > ACTIVITY_THRESHOLDS.walkSpeedMps) return 'walk';
-  return 'still';
+export function watchPreciseFix(onUpdate: (fix: GeoFix) => void): () => void {
+  let subscription: Location.LocationSubscription | undefined;
+  let cancelled = false;
+  let lastUpdateAt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const emit = (loc: Location.LocationObject) => {
+    lastUpdateAt = Date.now();
+    onUpdate({ lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? 9999 });
+  };
+
+  const stopSubscription = () => {
+    subscription?.remove();
+    subscription = undefined;
+  };
+
+  const scheduleWatchdog = () => {
+    watchdogTimer = setTimeout(() => {
+      if (cancelled) return;
+      if (Date.now() - lastUpdateAt > GEOTAG_ACCURACY.staleAfterMs) {
+        console.warn('[gps] no fix for a while — restarting the location watch');
+        stopSubscription();
+        start();
+        return;
+      }
+      scheduleWatchdog();
+    }, GEOTAG_ACCURACY.watchdogIntervalMs);
+  };
+
+  const start = () => {
+    lastUpdateAt = Date.now();
+    Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: GEOTAG_ACCURACY.watchIntervalMs,
+        distanceInterval: 0,
+      },
+      emit
+    )
+      .then(sub => {
+        if (cancelled) {
+          sub.remove();
+          return;
+        }
+        subscription = sub;
+        console.log('[gps] high-accuracy watch running');
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+        scheduleWatchdog();
+      })
+      .catch(e => {
+        if (cancelled) return;
+        console.warn('[gps] watch failed, will retry —', e instanceof Error ? e.message : e);
+        retryTimer = setTimeout(start, GEOTAG_ACCURACY.retryIntervalMs);
+      });
+  };
+
+  start();
+
+  return () => {
+    cancelled = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    stopSubscription();
+  };
 }

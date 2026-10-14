@@ -1,0 +1,191 @@
+import { Photo } from '@/types/domain';
+import {
+  autoSyncable,
+  sharedValue,
+  cleanNote,
+  captureFileName,
+  countBySite,
+  displaySize,
+  mergeById,
+  mergePhotoLists,
+  newLocalPhotoId,
+  photoFromCaptureFileName,
+} from '@/utils/photos';
+
+function photo(overrides: Partial<Photo>): Photo {
+  return {
+    id: 'local-1700000000000-abc123',
+    uri: 'file:///docs/a.jpg',
+    mediaType: 'photo',
+    lat: 27.717245,
+    lng: 85.323961,
+    accuracy: 6.4,
+    plusCode: '7JJQPJ89+VH',
+    takenAt: 1_700_000_000_000,
+    personId: 'zNR7yZ1UFjaW75NlMuSr2dYP3d82',
+    task: 'Column grid L4',
+    synced: false,
+    ...overrides,
+  };
+}
+
+describe('newLocalPhotoId', () => {
+  it('gives two captures in the same millisecond distinct ids', () => {
+    expect(newLocalPhotoId(1)).not.toBe(newLocalPhotoId(1));
+  });
+});
+
+describe('capture file names', () => {
+  it('round-trips everything the Photos list needs', () => {
+    const original = photo({});
+    const name = captureFileName(original);
+
+    const recovered = photoFromCaptureFileName({ filename: name, uri: 'file:///gallery/x.jpg' });
+
+    expect(recovered).toEqual({
+      ...original,
+      uri: 'file:///gallery/x.jpg',
+      plusCode: expect.any(String),
+    });
+  });
+
+  it('round-trips a video with its duration', () => {
+    const name = captureFileName(photo({ mediaType: 'video', durationMs: 12_000 }));
+    expect(name.endsWith('.mp4')).toBe(true);
+
+    const recovered = photoFromCaptureFileName({
+      filename: name,
+      uri: 'file:///g/v.mp4',
+      durationMs: 12_000,
+    });
+
+    expect(recovered?.mediaType).toBe('video');
+    expect(recovered?.durationMs).toBe(12_000);
+  });
+
+  it('handles southern/western coordinates and ids containing underscores', () => {
+    const original = photo({ lat: -33.8688, lng: -151.2093, personId: 'dev_worker_1' });
+
+    const recovered = photoFromCaptureFileName({ filename: captureFileName(original), uri: 'u' });
+
+    expect(recovered).toMatchObject({ lat: -33.8688, lng: -151.2093, personId: 'dev_worker_1' });
+  });
+
+  it('strips characters a file name cannot hold from the task', () => {
+    const name = captureFileName(photo({ task: 'Slab/L4: "east"_bay?' }));
+
+    expect(name).not.toMatch(/[\\/:*?"<>|]/);
+    expect(photoFromCaptureFileName({ filename: name, uri: 'u' })?.task).toBe('Slab L4 east bay');
+  });
+
+  it('keeps a task in a non-Latin script', () => {
+    const name = captureFileName(photo({ task: 'स्तम्भ ढलान' }));
+
+    expect(photoFromCaptureFileName({ filename: name, uri: 'u' })?.task).toBe('स्तम्भ ढलान');
+  });
+
+  it('ignores files it did not name', () => {
+    expect(photoFromCaptureFileName({ filename: 'IMG_20260925_101500.jpg', uri: 'u' })).toBeNull();
+  });
+});
+
+describe('mergeById', () => {
+  it('adds only entries the base list does not already have, base winning', () => {
+    const base = [photo({ id: 'a', task: 'saved' })];
+    const extra = [photo({ id: 'a', task: 'recovered' }), photo({ id: 'b' })];
+
+    const merged = mergeById(base, extra);
+
+    expect(merged.map(p => [p.id, p.task])).toEqual([
+      ['a', 'saved'],
+      ['b', 'Column grid L4'],
+    ]);
+  });
+});
+
+describe('mergePhotoLists', () => {
+  it('shows a capture the backend also has once, from the local file, marked synced', () => {
+    const local = [photo({ id: 'local-1', uri: 'file:///docs/a.jpg', takenAt: 5 })];
+    const remote = [photo({ id: 'firestore-9', uri: 'https://cdn/a.jpg', takenAt: 5, synced: true })];
+
+    const merged = mergePhotoLists(local, remote);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ id: 'local-1', uri: 'file:///docs/a.jpg', synced: true });
+  });
+
+  it('keeps backend-only photos and sorts newest first', () => {
+    const local = [photo({ id: 'l', takenAt: 2 })];
+    const remote = [photo({ id: 'r-new', takenAt: 3 }), photo({ id: 'r-old', takenAt: 1 })];
+
+    expect(mergePhotoLists(local, remote).map(p => p.id)).toEqual(['r-new', 'l', 'r-old']);
+  });
+});
+
+describe('displaySize', () => {
+  // VisionCamera reports an upright phone photo as landscape pixels plus a landscape-* orientation.
+  it('swaps the sensor size for landscape-* orientations so portrait shots read as portrait', () => {
+    expect(displaySize(4032, 3024, 'landscape-left')).toEqual({ width: 3024, height: 4032 });
+    expect(displaySize(4032, 3024, 'landscape-right')).toEqual({ width: 3024, height: 4032 });
+  });
+
+  it('keeps it as reported otherwise', () => {
+    expect(displaySize(4032, 3024, 'portrait')).toEqual({ width: 4032, height: 3024 });
+  });
+});
+
+describe('countBySite', () => {
+  it('counts per site, keeping captures made while not checked in under undefined', () => {
+    const counts = countBySite([
+      photo({ id: '1', siteId: 'a' }),
+      photo({ id: '2', siteId: 'b' }),
+      photo({ id: '3', siteId: 'a' }),
+      photo({ id: '4' }),
+    ]);
+
+    expect([...counts]).toEqual([
+      ['a', 2],
+      ['b', 1],
+      [undefined, 1],
+    ]);
+  });
+});
+
+describe('cleanNote', () => {
+  it('trims and caps the length', () => {
+    expect(cleanNote('  pouring slab  ', 50)).toBe('pouring slab');
+    expect(cleanNote('abcdef', 3)).toBe('abc');
+    expect(cleanNote('ab  cd', 3)).toBe('ab');
+  });
+
+  it('turns whitespace-only into empty, meaning no note', () => {
+    expect(cleanNote('   ', 50)).toBe('');
+  });
+});
+
+describe('autoSyncable', () => {
+  const list = [
+    photo({ id: 'a', personId: 'worker-1' }),
+    photo({ id: 'b', personId: 'worker-1', synced: true }),
+    photo({ id: 'c', personId: 'other' }),
+    photo({ id: 'd', personId: 'worker-1' }),
+  ];
+
+  it("is this person's unsynced captures only", () => {
+    expect(autoSyncable(list, 'worker-1', []).map(p => p.id)).toEqual(['a', 'd']);
+  });
+
+  it('holds back the capture whose note is being typed', () => {
+    expect(autoSyncable(list, 'worker-1', ['a']).map(p => p.id)).toEqual(['d']);
+  });
+});
+
+describe('sharedValue', () => {
+  it('returns the common value, or blank when they differ or are missing', () => {
+    expect(sharedValue(['slab', 'slab'])).toBe('slab');
+    expect(sharedValue(['slab', 'wall'])).toBe('');
+    expect(sharedValue(['slab', undefined])).toBe('');
+    expect(sharedValue([undefined, undefined])).toBe('');
+    expect(sharedValue([])).toBe('');
+  });
+});

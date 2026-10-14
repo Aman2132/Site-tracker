@@ -9,3 +9,6 @@ ios/
 .env
 *.keystore
 *.jks
+serviceAccountKey*.json
+scripts/*.json
+!scripts/package.json
