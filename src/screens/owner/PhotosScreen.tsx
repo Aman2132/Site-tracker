@@ -1,90 +1,123 @@
-import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { SectionList, StyleSheet, Text, View } from 'react-native';
 
 import EmptyState from '@/components/common/EmptyState';
+import FilterSheet from '@/components/common/FilterSheet';
 import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
 import ScreenTitle from '@/components/common/ScreenTitle';
-import PersonFilterChips from '@/components/owner/PersonFilterChips';
+import PendingSyncBar from '@/components/owner/PendingSyncBar';
 import PhotoGridCell from '@/components/owner/PhotoGridCell';
-import { colors, fontFamily, radius, spacing } from '@/constants/theme';
-import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
-import { usePhotoStore } from '@/store/usePhotoStore';
+import PhotoViewer from '@/components/owner/PhotoViewer';
+import { colors, fontFamily, spacing } from '@/constants/theme';
+import { EVERYONE, useOwnerPhotosController } from '@/controllers/useOwnerPhotosController';
+import { OwnerTabParamList } from '@/types/navigation';
 
-/** Not a real id — groups every photo with no stamped name under one filter chip. */
-const UNKNOWN_ID = '__unknown__';
-
+/** Owner Photos tab: everyone's photos by day, filterable by person, site and date; tap one to open it. */
 export default function PhotosScreen() {
-  const { photos, pendingCount } = usePhotoQueueController();
-  const loaded = usePhotoStore(state => state.loaded);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const photos = useOwnerPhotosController();
+  const { filters } = photos;
+  const route = useRoute<RouteProp<OwnerTabParamList, 'Photos'>>();
+  const navigation = useNavigation();
 
-  // Photos with no name on them (not yet backfilled, or taken before a name
-  // was stamped on capture) share one "Unknown" chip instead of one per
-  // person — there's nothing to tell those people apart by.
-  const people = useMemo(() => {
-    const byId = new Map<string, string>();
-    let hasUnknown = false;
-    for (const photo of photos) {
-      if (photo.personName) byId.set(photo.personId, photo.personName);
-      else hasUnknown = true;
-    }
-    const named = Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
-    return hasUnknown ? [...named, { id: UNKNOWN_ID, name: 'Unknown' }] : named;
-  }, [photos]);
+  // Arriving from an Activity entry: show that person's photos, then drop the param so it applies once.
+  const focusPersonId = route.params?.personId;
+  const { setPersonId } = photos;
+  useEffect(() => {
+    if (!focusPersonId) return;
+    setPersonId(focusPersonId);
+    navigation.setParams({ personId: undefined } as never);
+  }, [focusPersonId, setPersonId, navigation]);
 
-  const visiblePhotos =
-    selectedPersonId === null
-      ? photos
-      : selectedPersonId === UNKNOWN_ID
-        ? photos.filter(photo => !photo.personName)
-        : photos.filter(photo => photo.personId === selectedPersonId);
-
-  if (!loaded) return <LoadingView />;
+  if (!photos.loaded) return <LoadingView />;
 
   return (
     <ScreenContainer padded={false}>
       <ScreenTitle>Photos</ScreenTitle>
-      {pendingCount > 0 && (
-        <View style={styles.pendingBar}>
-          <Ionicons name="time-outline" size={13} color={colors.warningText} />
-          <Text style={styles.pendingText}>
-            {pendingCount} photo{pendingCount > 1 ? 's' : ''} of yours {pendingCount > 1 ? 'are' : 'is'} saved
-            on this phone, not uploaded yet
-          </Text>
-        </View>
+      {photos.pendingCount > 0 && (
+        <PendingSyncBar
+          pendingCount={photos.pendingCount}
+          syncing={photos.syncing}
+          syncError={photos.syncError}
+          onSync={photos.syncNow}
+        />
       )}
-      {people.length > 0 && (
-        <PersonFilterChips people={people} selectedId={selectedPersonId} onSelect={setSelectedPersonId} />
+      {photos.hasPhotos && (
+        <FilterSheet
+          summary={photos.summary}
+          activeCount={photos.activeFilterCount}
+          onReset={photos.reset}
+          sections={[
+            {
+              title: 'Site',
+              options: filters.siteOptions,
+              selectedId: filters.siteFilter,
+              onSelect: filters.setSiteFilter,
+            },
+            {
+              title: 'Date',
+              options: filters.dateOptions,
+              selectedId: filters.range,
+              onSelect: filters.setRange,
+            },
+            ...(photos.people.length > 2
+              ? [
+                  {
+                    title: 'Person',
+                    options: photos.people,
+                    selectedId: photos.personId,
+                    onSelect: setPersonId,
+                  },
+                ]
+              : []),
+          ]}
+        />
       )}
-      <FlatList
-        data={visiblePhotos}
-        keyExtractor={photo => photo.id}
-        numColumns={3}
-        contentContainerStyle={{ padding: 8 }}
-        renderItem={({ item }) => <PhotoGridCell photo={item} />}
+      <SectionList
+        sections={photos.sections}
+        keyExtractor={row => row[0].id}
+        contentContainerStyle={styles.list}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section }) => <Text style={styles.dayHeader}>{section.title}</Text>}
+        renderItem={({ item: row }) => (
+          <View style={styles.row}>
+            {row.map(photo => (
+              <PhotoGridCell key={photo.id} photo={photo} onPress={() => photos.open(photo.id)} />
+            ))}
+          </View>
+        )}
         ListEmptyComponent={
-          <EmptyState icon="images-outline" message="No photos yet. Take one from the Camera tab." />
+          <EmptyState
+            icon="images-outline"
+            message={
+              filters.filtering || photos.personId !== EVERYONE
+                ? 'No photos match these filters.'
+                : 'No photos yet. Take one from the Camera tab.'
+            }
+          />
         }
+      />
+      <PhotoViewer
+        photo={photos.openPhoto}
+        siteName={photos.openPhotoSiteName}
+        onClose={photos.close}
+        onOpenMaps={photos.showOnMap}
+        onPlayVideo={photos.playVideo}
       />
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  pendingBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs + 2,
-    backgroundColor: colors.warningBg,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
+  list: { padding: spacing.sm, paddingBottom: spacing.xl },
+  row: { flexDirection: 'row' },
+  dayHeader: {
+    fontFamily: fontFamily.bold,
+    fontSize: 13,
+    color: colors.text,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
   },
-  pendingText: { fontFamily: fontFamily.medium, color: colors.warningText, fontSize: 12 },
 });

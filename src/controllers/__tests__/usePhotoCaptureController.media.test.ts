@@ -29,7 +29,21 @@ jest.mock('@/services/permissionsService', () => ({
   requestForegroundLocationPermission: jest.fn(async () => true),
 }));
 
-const photoCamera = { takePhoto: jest.fn(async () => ({ path: '/tmp/shot.jpg' })) } as never;
+interface Shot {
+  path: string;
+  width: number;
+  height: number;
+  orientation: string;
+}
+
+const photoCamera = {
+  takePhoto: jest.fn(async () => ({
+    path: '/tmp/shot.jpg',
+    width: 4032,
+    height: 3024,
+    orientation: 'landscape-left',
+  })),
+} as never;
 
 /** Pushes a fix through the controller's GPS watch. */
 function primeFix(fix: GeoFix) {
@@ -62,10 +76,21 @@ describe('photo capture guard', () => {
     expect(usePhotoStore.getState().photos[0].mediaType).toBe('photo');
   });
 
+  it('fires the flash as chosen, and keeps it off by default', async () => {
+    const { result } = renderHook(() => usePhotoCaptureController());
+    const takePhoto = (photoCamera as unknown as { takePhoto: jest.Mock }).takePhoto;
+
+    await act(() => result.current.capturePhoto(photoCamera, 'Task', 'auto'));
+    expect(takePhoto).toHaveBeenLastCalledWith({ flash: 'auto' });
+
+    await act(() => result.current.capturePhoto(photoCamera, 'Task'));
+    expect(takePhoto).toHaveBeenLastCalledWith({ flash: 'off' });
+  });
+
   it('ignores a second shutter press while the first photo is still being processed', async () => {
     // A 12 MP photo is ~5 MB of base64 in JS memory; two in parallel is a spike.
-    let release: (value: { path: string }) => void = () => {};
-    const takePhoto = jest.fn(() => new Promise<{ path: string }>(resolve => (release = resolve)));
+    let release: (value: Shot) => void = () => {};
+    const takePhoto = jest.fn(() => new Promise<Shot>(resolve => (release = resolve)));
     const slowCamera = { takePhoto } as never;
     const { result } = renderHook(() => usePhotoCaptureController());
 
@@ -79,7 +104,7 @@ describe('photo capture guard', () => {
     expect(result.current.isSaving).toBe(true);
 
     await act(async () => {
-      release({ path: '/tmp/slow.jpg' });
+      release({ path: '/tmp/slow.jpg', width: 4032, height: 3024, orientation: 'landscape-left' });
       await first;
     });
     expect(result.current.isSaving).toBe(false);
@@ -90,7 +115,7 @@ describe('photo capture guard', () => {
     const takePhoto = jest
       .fn()
       .mockRejectedValueOnce(new Error('camera busy'))
-      .mockResolvedValue({ path: '/tmp/ok.jpg' });
+      .mockResolvedValue({ path: '/tmp/ok.jpg', width: 4032, height: 3024, orientation: 'landscape-left' });
     const flaky = { takePhoto } as never;
     const { result } = renderHook(() => usePhotoCaptureController());
 

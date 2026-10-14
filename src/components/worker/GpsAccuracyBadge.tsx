@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 3,
   },
-  badgeSeeking: { backgroundColor: 'rgba(226,103,15,0.88)' },
+  badgeSeeking: { backgroundColor: 'rgba(183,121,31,0.9)' },
   badgePrecise: { backgroundColor: 'rgba(15,157,88,0.88)' },
   text: { fontFamily: fontFamily.bold, color: colors.white, fontSize: 11.5 },
 });

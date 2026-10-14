@@ -17,8 +17,11 @@ export function useCameraController(task: string) {
   const session = useCameraSessionController();
   const capture = usePhotoCaptureController();
 
-  const { zoom, zoomRange, setZoom, mode, supportsFocus } = session;
+  const { zoom, zoomRange, setZoom, mode, supportsFocus, flash } = session;
   const pinch = useRef<{ startZoom: number; startDistance: number } | null>(null);
+  /** Latest pinch zoom not yet applied, and the frame that will apply it. */
+  const pendingZoom = useRef<number | null>(null);
+  const zoomFrame = useRef<number | null>(null);
   /** A single-finger touch that might turn out to be a tap (not a drag, not the start of a pinch). */
   const tap = useRef<{ x: number; y: number; at: number; pinched: boolean } | null>(null);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; key: number } | null>(null);
@@ -49,17 +52,36 @@ export function useCameraController(task: string) {
   const onTouchMove = useCallback(
     (event: GestureResponderEvent) => {
       const touches = event.nativeEvent.touches;
-      if (touches.length !== 2 || !pinch.current || !zoomRange) return;
-      setZoom(
-        pinchZoom({
-          ...pinch.current,
-          distance: touchDistance(touches[0], touches[1]),
-          min: zoomRange.min,
-          max: zoomRange.max,
-        })
-      );
+      if (touches.length !== 2 || !zoomRange) return;
+      // The second finger's touch-start can land on an overlay and never reach us — start the pinch here instead.
+      if (!pinch.current) {
+        pinch.current = { startZoom: zoom, startDistance: touchDistance(touches[0], touches[1]) };
+        if (tap.current) tap.current.pinched = true;
+        return;
+      }
+      pendingZoom.current = pinchZoom({
+        ...pinch.current,
+        distance: touchDistance(touches[0], touches[1]),
+        min: zoomRange.min,
+        max: zoomRange.max,
+      });
+      // Phones report finger moves far faster than the screen redraws (120–240 Hz), and each
+      // zoom change re-renders the screen and calls into the camera — so apply one per frame.
+      if (zoomFrame.current == null) {
+        zoomFrame.current = requestAnimationFrame(() => {
+          zoomFrame.current = null;
+          if (pendingZoom.current != null) setZoom(pendingZoom.current);
+        });
+      }
     },
-    [setZoom, zoomRange]
+    [setZoom, zoom, zoomRange]
+  );
+
+  useEffect(
+    () => () => {
+      if (zoomFrame.current != null) cancelAnimationFrame(zoomFrame.current);
+    },
+    []
   );
 
   const onTouchEnd = useCallback(
@@ -91,10 +113,10 @@ export function useCameraController(task: string) {
   const onShutter = useCallback(() => {
     const camera = cameraRef.current;
     if (!camera) return;
-    if (mode === 'photo') capture.capturePhoto(camera, task);
+    if (mode === 'photo') capture.capturePhoto(camera, task, flash);
     else if (capture.isRecording) capture.stopVideo();
     else capture.startVideo(camera, task);
-  }, [mode, capture, task]);
+  }, [mode, capture, task, flash]);
 
   return {
     cameraRef,

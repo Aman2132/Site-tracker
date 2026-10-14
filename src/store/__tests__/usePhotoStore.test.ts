@@ -42,4 +42,22 @@ describe('usePhotoStore', () => {
     usePhotoStore.getState().markAllSynced();
     expect(selectPendingPhotos(usePhotoStore.getState())).toHaveLength(0);
   });
+
+  it('sets, trims away on empty, and keeps the note off other photos', () => {
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'a' });
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'b' });
+
+    usePhotoStore.getState().setNote('a', 'Pouring slab');
+    expect(usePhotoStore.getState().photos.map(p => p.note)).toEqual([undefined, 'Pouring slab']);
+
+    usePhotoStore.getState().setNote('a', '');
+    expect(usePhotoStore.getState().photos.every(p => !('note' in p))).toBe(true);
+  });
+
+  it('tracks per-photo sync status and clears it', () => {
+    usePhotoStore.getState().setSyncStatus('a', 'failed');
+    expect(usePhotoStore.getState().syncStatus).toEqual({ a: 'failed' });
+    usePhotoStore.getState().setSyncStatus('a', null);
+    expect(usePhotoStore.getState().syncStatus).toEqual({});
+  });
 });

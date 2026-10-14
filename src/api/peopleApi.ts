@@ -1,5 +1,24 @@
-import { onValue, ref, serverTimestamp, update } from 'firebase/database';
-import { collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  equalTo,
+  onValue,
+  orderByChild,
+  query as dbQuery,
+  ref,
+  serverTimestamp,
+  update,
+} from 'firebase/database';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 
 import { firestore, rtdb } from './firebaseClient';
 
@@ -29,6 +48,8 @@ interface LivePosition {
   battery?: number;
   paused?: boolean;
   kind?: ActivityKind;
+  /** Site the person is checked in at; null/absent when checked out. */
+  siteId?: string | null;
 }
 
 const STALE_AFTER_MS = 3 * 60_000;
@@ -45,6 +66,7 @@ function mergePersonProfile(profile: PersonProfile, live: LivePosition | undefin
     battery: live?.battery,
     paused: live?.paused ?? false,
     kind: isStale ? 'stale' : (live?.kind ?? 'still'),
+    ...(live?.siteId ? { siteId: live.siteId } : {}),
   };
 }
 
@@ -146,7 +168,7 @@ export function subscribeToCrew(
 }
 
 /** Reports the signed-in worker's own position. Fire-and-forget from the caller's side. */
-export async function reportPosition(personId: string, fix: TrackedFix): Promise<void> {
+export async function reportPosition(personId: string, fix: TrackedFix, siteId?: string): Promise<void> {
   await update(ref(rtdb, `positions/${personId}`), {
     lat: fix.lat,
     lng: fix.lng,
@@ -154,6 +176,7 @@ export async function reportPosition(personId: string, fix: TrackedFix): Promise
     kind: fix.kind,
     // Left as-is when unknown, rather than overwritten with a guess.
     ...(fix.battery != null ? { battery: fix.battery } : {}),
+    ...(siteId ? { siteId } : {}),
     lastFixAt: serverTimestamp(),
   });
 }
@@ -163,7 +186,54 @@ export async function reportPauseState(personId: string, paused: boolean): Promi
   await update(ref(rtdb, `positions/${personId}`), { paused });
 }
 
+/** Where the person is checked in right now (null once checked out), so the dashboard can filter the live map by site. */
+export async function reportCheckedInSite(personId: string, siteId: string | null): Promise<void> {
+  await update(ref(rtdb, `positions/${personId}`), { siteId });
+}
+
+/**
+ * Everyone assigned to a site (people/{uid}.siteIds contains it): one small
+ * query, not the whole roster, so a worker's phone reads only its own crew.
+ */
+export async function fetchSiteCrew(siteId: string): Promise<PersonProfile[]> {
+  const snapshot = await getDocs(
+    query(collection(firestore, 'people'), where('siteIds', 'array-contains', siteId))
+  );
+  return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<PersonProfile, 'id'>) }));
+}
+
+/** Live check-in state of one person, as the crew card needs it. */
+export interface SitePresence {
+  paused?: boolean;
+  lastFixAt?: number;
+  lat?: number;
+  lng?: number;
+}
+
+/**
+ * Live positions of only the people checked in at `siteId` (positions whose
+ * siteId matches). database.rules.json indexes siteId so the server does the
+ * filtering; without the index deployed the SDK downloads every position and
+ * filters on the phone. Returns the unsubscribe function.
+ */
+export function subscribeToSitePresence(
+  siteId: string,
+  onChange: (presence: Record<string, SitePresence>) => void,
+  onError: (error: Error) => void
+): () => void {
+  return onValue(
+    dbQuery(ref(rtdb, 'positions'), orderByChild('siteId'), equalTo(siteId)),
+    snapshot => onChange((snapshot.val() as Record<string, SitePresence>) ?? {}),
+    onError
+  );
+}
+
 /** Saves this device's Expo push token so a future server-side notifier can reach it. */
 export async function savePushToken(personId: string, expoPushToken: string): Promise<void> {
   await setDoc(doc(firestore, 'pushTokens', personId), { expoPushToken, updatedAt: Date.now() });
+}
+
+/** Forgets this person's push token, so nothing is sent to them (notifications switched off in Settings). */
+export async function deletePushToken(personId: string): Promise<void> {
+  await deleteDoc(doc(firestore, 'pushTokens', personId));
 }

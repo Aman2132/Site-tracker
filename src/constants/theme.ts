@@ -25,11 +25,14 @@ export const colors = {
   primarySoft: 'rgba(28,79,240,0.08)',
   primarySoftStrong: 'rgba(28,79,240,0.14)',
 
-  /** Worker mode accent — visually distinguishes "in the field" screens from owner/dashboard screens. */
-  worker: '#e2670f',
-  workerDeep: '#a8460a',
-  workerBright: '#ff9d4d',
-  workerSoft: 'rgba(226,103,15,0.1)',
+  /**
+   * Worker mode accent — a classic corporate navy, so "in the field" screens
+   * still read as distinct from the owner's brighter blue without the old orange.
+   */
+  worker: '#1f3a60',
+  workerDeep: '#142847',
+  workerBright: '#3d6496',
+  workerSoft: 'rgba(31,58,96,0.08)',
 
   success: '#0f9d58',
   successDeep: '#0a7a44',
@@ -37,7 +40,7 @@ export const colors = {
   successBorder: '#c3ecd6',
   successText: '#0b7a44',
 
-  warning: '#e2670f',
+  warning: '#b7791f',
   warningBg: '#fdefe1',
   warningBorder: '#fbdcb8',
   warningText: '#93430a',
@@ -66,7 +69,7 @@ export const colors = {
 export const gradients = {
   primary: ['#2a5cf5', '#0a2ba8'] as const,
   primaryRadiant: ['#4f7bff', '#1c4ff0'] as const,
-  worker: ['#ff8a3d', '#c4530a'] as const,
+  worker: ['#2a4a76', '#172d4f'] as const,
   ink: ['#1b2140', '#0b0e1c'] as const,
   success: ['#1cb872', '#0a7a44'] as const,
   sheen: ['rgba(255,255,255,0.16)', 'rgba(255,255,255,0)'] as const,

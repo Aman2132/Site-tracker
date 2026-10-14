@@ -10,7 +10,7 @@ import {
 
 import { CAMERA } from '@/constants/config';
 import { CaptureMode } from '@/types/domain';
-import { clampZoom, zoomStops } from '@/utils/camera';
+import { FlashMode, clampZoom, nextFlash, zoomStops } from '@/utils/camera';
 
 /** "Someone else has the camera right now" — usually gone a moment later, so worth retrying quietly. */
 const TRANSIENT_ERRORS = new Set(['device/camera-already-in-use', 'system/camera-is-restricted']);
@@ -59,13 +59,18 @@ function useAppIsForeground(): boolean {
  * only open while this screen is focused AND the app is in the foreground.
  */
 export function useCameraSessionController() {
-  const device = useCameraDevice('back');
+  const [position, setPosition] = useState<'back' | 'front'>('back');
+  const back = useCameraDevice('back');
+  const front = useCameraDevice('front');
+  // Falls back to whichever lens exists (some tablets/emulators have only one).
+  const device = position === 'front' ? (front ?? back) : (back ?? front);
   const isFocused = useIsFocused();
   const appForeground = useAppIsForeground();
   const microphone = useMicrophonePermission();
 
   const [mode, setModeState] = useState<CaptureMode>('photo');
   const [zoomOverride, setZoomOverride] = useState<number | null>(null);
+  const [flash, setFlash] = useState<FlashMode>('off');
   /** Changing this remounts <Camera>, forcing a brand-new session. */
   const [attempt, setAttempt] = useState(0);
   /** True while we deliberately hold the camera closed between retries. */
@@ -119,9 +124,14 @@ export function useCameraSessionController() {
     [zoomRange]
   );
 
+  const cycleFlash = useCallback(() => setFlash(current => nextFlash(current, mode)), [mode]);
+  const flip = useCallback(() => setPosition(current => (current === 'back' ? 'front' : 'back')), []);
+
   const setMode = useCallback(
     (next: CaptureMode) => {
       setModeState(next);
+      // Video's light is a torch: no "auto".
+      if (next === 'video') setFlash(current => (current === 'auto' ? 'off' : current));
       // Only ask for the microphone when someone actually opts into video.
       if (next === 'video' && !microphone.hasPermission) microphone.requestPermission();
     },
@@ -177,6 +187,8 @@ export function useCameraSessionController() {
   useEffect(() => clearRetryTimer, [clearRetryTimer]);
 
   const isActive = isFocused && appForeground && !releasing && problem === null;
+  // Front lenses usually have neither; asking for one they lack is a runtime error.
+  const flashSupported = mode === 'photo' ? device?.hasFlash === true : device?.hasTorch === true;
 
   return {
     device,
@@ -193,6 +205,13 @@ export function useCameraSessionController() {
     videoStabilizationMode: mode === 'video' ? bestStabilization(format?.videoStabilizationModes) : undefined,
     supportsFocus: device?.supportsFocus === true,
     audioEnabled: mode === 'video' && microphone.hasPermission,
+    flash: flashSupported ? flash : 'off',
+    flashSupported,
+    cycleFlash,
+    /** Video keeps the light on while previewing and recording. */
+    torch: (mode === 'video' && flashSupported && flash === 'on' ? 'on' : 'off') as 'on' | 'off',
+    canFlip: back != null && front != null,
+    flip,
     zoom,
     zoomRange,
     zoomStops: stops,

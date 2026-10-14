@@ -1,4 +1,6 @@
-/** Pure camera helpers: zoom maths and timer formatting. No React, no hardware. */
+/** Pure camera helpers: zoom maths, flash cycling and timer formatting. No React, no hardware. */
+
+import { CaptureMode } from '@/types/domain';
 
 export interface ZoomRange {
   min: number;
@@ -79,4 +81,12 @@ export function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+export type FlashMode = 'off' | 'auto' | 'on';
+
+/** Flash button: photo cycles off → auto → on; video (a torch) only has off ↔ on. */
+export function nextFlash(current: FlashMode, mode: CaptureMode): FlashMode {
+  if (mode === 'video') return current === 'on' ? 'off' : 'on';
+  return current === 'off' ? 'auto' : current === 'auto' ? 'on' : 'off';
 }

@@ -3,15 +3,23 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 
-/** Horizontal "All" + one chip per person, for filtering a photo grid by who took it. */
-export default function PersonFilterChips({
-  people,
+export interface FilterChipOption {
+  id: string;
+  label: string;
+}
+
+/** A horizontal, scrollable row of single-choice chips (sites, dates, people…). */
+export default function FilterChips({
+  options,
   selectedId,
   onSelect,
+  accent = colors.primary,
 }: {
-  people: { id: string; name: string }[];
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  options: FilterChipOption[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  /** Fill colour of the selected chip: the owner's blue or the worker's orange. */
+  accent?: string;
 }) {
   return (
     <ScrollView
@@ -20,26 +28,23 @@ export default function PersonFilterChips({
       style={styles.scroll}
       contentContainerStyle={styles.row}
     >
-      <Chip label="All" selected={selectedId === null} onPress={() => onSelect(null)} />
-      {people.map(person => (
-        <Chip
-          key={person.id}
-          label={person.name}
-          selected={selectedId === person.id}
-          onPress={() => onSelect(person.id)}
-        />
-      ))}
+      {options.map(option => {
+        const selected = option.id === selectedId;
+        return (
+          <TouchableOpacity
+            key={option.id}
+            style={[styles.chip, selected && { backgroundColor: accent, borderColor: accent }]}
+            onPress={() => onSelect(option.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+          >
+            <Text style={[styles.chipText, selected && styles.chipTextSelected]} numberOfLines={1}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </ScrollView>
-  );
-}
-
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={[styles.chip, selected && styles.chipSelected]} onPress={onPress}>
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]} numberOfLines={1}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -64,7 +69,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontFamily: fontFamily.medium, fontSize: 12.5, color: colors.textMuted },
   chipTextSelected: { color: colors.white },
 });

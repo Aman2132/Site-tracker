@@ -14,6 +14,43 @@ export function newLocalPhotoId(
   return `local-${takenAt}-${suffix}`;
 }
 
+/**
+ * The size a photo is shown at. The sensor is landscape, so VisionCamera reports
+ * an upright phone photo as e.g. 4032x3024 with a landscape-* orientation (an
+ * EXIF rotation, not rotated pixels) — swap those, so portrait shots read as portrait.
+ */
+export function displaySize(
+  width: number,
+  height: number,
+  orientation: string
+): { width: number; height: number } {
+  return orientation.startsWith('landscape') ? { width: height, height: width } : { width, height };
+}
+
+/**
+ * How many of these captures belong to each site, in first-seen order. The
+ * key is the site id, or undefined for captures made while not checked in.
+ */
+export function countBySite(photos: Photo[]): Map<string | undefined, number> {
+  const counts = new Map<string | undefined, number>();
+  for (const photo of photos) counts.set(photo.siteId, (counts.get(photo.siteId) ?? 0) + 1);
+  return counts;
+}
+
+/** A note as stored: trimmed and capped. Empty means "no note". */
+export function cleanNote(input: string, maxChars: number): string {
+  return input.trim().slice(0, maxChars).trim();
+}
+
+/**
+ * What background sync should upload now: this person's unsynced captures,
+ * minus the one whose note is being typed (its record can't be edited once uploaded).
+ */
+export function autoSyncable(photos: Photo[], personId: string, heldIds: string[]): Photo[] {
+  const held = new Set(heldIds);
+  return photos.filter(photo => !photo.synced && photo.personId === personId && !held.has(photo.id));
+}
+
 const LOCAL_ID = /^local-(\d+)-([a-z0-9]+)$/;
 
 /** Characters Android/iOS file systems reject, plus `_`, which separates the name's fields. */
@@ -119,4 +156,10 @@ export function mergePhotoLists(local: Photo[], remote: Photo[]): Photo[] {
   );
   const remoteOnly = remote.filter(photo => !localKeys.has(captureKey(photo)));
   return [...localShown, ...remoteOnly].sort((a, b) => b.takenAt - a.takenAt);
+}
+
+/** The value when every item has the same one, else '' (a batch with mixed notes starts blank). */
+export function sharedValue(values: (string | undefined)[]): string {
+  const first = values[0] ?? '';
+  return values.every(value => (value ?? '') === first) ? first : '';
 }

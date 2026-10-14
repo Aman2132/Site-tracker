@@ -4,7 +4,7 @@
  * in, only src/api/* should need to change.
  */
 
-export type Role = 'owner' | 'worker';
+export type Role = 'owner' | 'worker' | 'superadmin';
 
 /**
  * Coarse activity signal: from Android's activity recognition when it has a
@@ -60,6 +60,49 @@ export interface PersonProfile {
    * set from their Profile tab. Missing means "show initials instead".
    */
   avatar?: string;
+  /** Sites this person is assigned to (`sites/{id}`); set by an owner from the admin dashboard. Missing means none. */
+  siteIds?: string[];
+  /** Contact + grouping details the admin dashboard records when it invites someone. */
+  email?: string;
+  phone?: string;
+  team?: string;
+}
+
+/** A project. Has a name and crew, deliberately no location. Created and edited from the admin dashboard. */
+export interface Site {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+/**
+ * One continuous stretch of checked-in time (`sessions/{id}`). Check-in opens
+ * it, check-out or a pause closes it; `end` is absent while it is open. A
+ * session that never closes (dead phone) is judged by the dashboard from the
+ * person's last position fix.
+ */
+export interface PresenceSession {
+  id: string;
+  personId: string;
+  siteId: string;
+  start: number;
+  end?: number;
+  endReason?: SessionEndReason;
+}
+
+export type SessionEndReason = 'signed-off' | 'paused';
+
+/**
+ * The person's current check-in as the phone remembers it, so it survives an
+ * app restart (see services/shiftStorage.ts).
+ */
+export interface ActiveShift {
+  siteId: string;
+  siteName: string;
+  checkedInAt: number;
+  /** Id of the open `sessions` doc. Null while paused (a pause closes it; resume opens a new one). */
+  sessionId: string | null;
+  paused: boolean;
 }
 
 /** What someone can change about themselves on their Profile tab. */
@@ -82,6 +125,8 @@ export interface Person extends PersonProfile {
   /** 0–1; undefined until the phone reports one (older app builds never do). */
   battery?: number;
   paused: boolean;
+  /** Site they are checked in at right now; absent when checked out. */
+  siteId?: string;
 }
 
 /** What a capture is. Records saved before video existed have no `mediaType` — treat those as photos. */
@@ -111,19 +156,92 @@ export interface Photo {
   /** Stamped at capture time so attribution survives a rename/deactivation. Absent on photos taken before this field existed. */
   personName?: string;
   task: string;
+  /** Optional free-text note ("what I am doing"), trimmed, max PHOTO_NOTE.maxChars. Absent when empty. Written to Firestore as `note`. */
+  note?: string;
+  /** The person's own inventory entry this photo is proof for (`inventory/{id}`). Set before upload only. */
+  inventoryId?: string;
   synced: boolean;
+  /** Site the person was checked in at when this was captured. Absent when not checked in. */
+  siteId?: string;
+  /** Pixel size of the original, for the dashboard's gallery layout. Absent on older captures. */
+  width?: number;
+  height?: number;
+  /** Small preview in Supabase, made on the phone at sync. Absent for videos and older uploads. */
+  thumbUrl?: string;
 }
 
 export type EventKind = 'info' | 'warn';
+
+/** What happened, for the dashboard's filters and icons. Missing on events written before this existed. */
+export type EventType = 'checkin' | 'checkout' | 'pause' | 'resume' | 'upload' | 'battery' | 'crew' | 'site';
 
 export interface AppEvent {
   id: string;
   at: number;
   text: string;
   kind: EventKind;
+  type?: EventType;
+  personId?: string;
+  siteId?: string;
 }
 
 export interface LocationPermissionState {
   granted: boolean;
   background: boolean;
 }
+
+/** A runtime permission as the Settings card shows it. 'blocked' = refused for good: only Android Settings can change it now. */
+export type PermissionAccess = 'granted' | 'ask' | 'blocked';
+
+/** Location access, split so the Settings card can tell "always" (background tracking works) from "while using". */
+export type LocationAccess = 'always' | 'whileUsing' | Exclude<PermissionAccess, 'granted'>;
+
+/** One logged use of a received item — only the entry's own creator may add one. */
+export interface UsageLogEntry {
+  quantity: number;
+  at: number;
+  note?: string;
+}
+
+/**
+ * One delivery of one item received at a site (`inventory/{id}`). Any crew
+ * assigned to the site may read every entry for it and may create one; only
+ * the person who created an entry may log usage against it (consumption is
+ * tracked here, not as a separate doc, so it stays next to what it drew
+ * down). An owner can edit or delete any entry from the admin dashboard,
+ * which stamps `editedAt`; who did it (and their note) is in the
+ * superadmin-only adminAudit trail, not here.
+ */
+export interface InventoryEntry {
+  id: string;
+  personId: string;
+  /** Stamped at entry time, like Photo.personName. */
+  personName: string;
+  siteId: string;
+  /** Item name as typed, e.g. "Cement (OPC 53)". */
+  name: string;
+  /** Total in `unit` — for packs, packCount × packSize (5 pieces of 5 m wire = 25 m). Usage is logged in this unit. */
+  quantity: number;
+  /** One of INVENTORY.units or a custom one typed under "Other". */
+  unit: string;
+  /** Set when it arrived as equal pieces/packs: how many, and how much `unit` each holds. Absent for a plain total. */
+  packCount?: number;
+  packSize?: number;
+  note?: string;
+  /** When it was received (entry time on the phone), epoch ms. */
+  receivedAt: number;
+  /** Sum of usage[].quantity; kept alongside the log so "remaining" is a plain subtraction. Absent means 0. */
+  usedQuantity?: number;
+  /** Each time the creator logged how much was used, oldest first. */
+  usage?: UsageLogEntry[];
+  /** Set by the admin dashboard when an owner changes the entry. */
+  editedAt?: number;
+  /** True while the phone has saved it but the server hasn't confirmed it yet. Never stored. */
+  pending?: boolean;
+}
+
+/** What the crew fill in; the rest is stamped by the controller. */
+export type InventoryDraft = Pick<
+  InventoryEntry,
+  'siteId' | 'name' | 'quantity' | 'unit' | 'note' | 'packCount' | 'packSize'
+>;

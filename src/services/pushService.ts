@@ -1,6 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+
+import { PermissionAccess } from '@/types/domain';
 
 /**
  * Local + foreground push plumbing via expo-notifications. Registers a
@@ -44,4 +47,22 @@ export async function registerForPushNotifications(): Promise<string | null> {
   const projectId = Constants.expoConfig?.extra?.eas?.projectId;
   const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
   return token.data;
+}
+
+/** Checks (never prompts) the notification permission. */
+export async function getNotificationAccess(): Promise<PermissionAccess> {
+  const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+  if (status === 'granted') return 'granted';
+  return canAskAgain ? 'ask' : 'blocked';
+}
+
+const NOTIFICATIONS_KEY = 'settings:notificationsEnabled';
+
+/** The Settings switch, per phone. On unless the person switched it off. */
+export async function loadNotificationsEnabled(): Promise<boolean> {
+  return (await AsyncStorage.getItem(NOTIFICATIONS_KEY).catch(() => null)) !== 'false';
+}
+
+export async function saveNotificationsEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(NOTIFICATIONS_KEY, String(enabled));
 }

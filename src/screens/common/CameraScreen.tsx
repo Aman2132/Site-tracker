@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera } from 'react-native-vision-camera';
@@ -8,17 +8,23 @@ import { Camera } from 'react-native-vision-camera';
 import CameraModeSwitch from '@/components/worker/CameraModeSwitch';
 import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
 import CameraProblemOverlay from '@/components/worker/CameraProblemOverlay';
+import CameraRoundButton from '@/components/worker/CameraRoundButton';
 import CameraShutterButton from '@/components/worker/CameraShutterButton';
 import CameraZoomControl from '@/components/worker/CameraZoomControl';
 import CaptureToast from '@/components/worker/CaptureToast';
+import CaptureTray from '@/components/worker/CaptureTray';
 import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
+import LastCaptureThumb from '@/components/worker/LastCaptureThumb';
+import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
 import RecordingBadge from '@/components/worker/RecordingBadge';
+import TaskEditorSheet from '@/components/worker/TaskEditorSheet';
 import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
 import { useCameraController } from '@/controllers/useCameraController';
-
-const DEFAULT_TASK_LABEL = 'Column grid L4';
+import { useCaptureTaskController } from '@/controllers/useCaptureTaskController';
+import { useCaptureTrayController } from '@/controllers/useCaptureTrayController';
+import { usePhotoNoteController } from '@/controllers/usePhotoNoteController';
 
 /**
  * Camera tab (workers and owners). Camera permission is settled first; the
@@ -35,6 +41,7 @@ export default function CameraScreen() {
 }
 
 function CameraView() {
+  const { task, recent, setTask } = useCaptureTaskController();
   const {
     cameraRef,
     device,
@@ -51,6 +58,12 @@ function CameraView() {
     zoom,
     zoomStops,
     setZoom,
+    flash,
+    flashSupported,
+    cycleFlash,
+    torch,
+    canFlip,
+    flip,
     attempt,
     problem,
     retry,
@@ -63,11 +76,25 @@ function CameraView() {
     recordingMs,
     lastSavedLabel,
     lastSavedIsPrecise,
+    lastCaptureId,
     clearLastSavedLabel,
     liveAccuracy,
     hasFix,
-  } = useCameraController(DEFAULT_TASK_LABEL);
+  } = useCameraController(task);
+  const { tray, lastPhoto, photosTab } = useCaptureTrayController(lastCaptureId);
+  const {
+    editing,
+    sharedNote,
+    sharedInventoryId,
+    visible: noteVisible,
+    openNote,
+    closeNote,
+    toggle,
+    saveNote,
+    linkable,
+  } = usePhotoNoteController();
   const insets = useSafeAreaInsets();
+  const [editingTask, setEditingTask] = useState(false);
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -87,6 +114,7 @@ function CameraView() {
             device={device}
             format={format}
             zoom={zoom}
+            torch={torch}
             isActive={isActive}
             photo={mode === 'photo'}
             video={mode === 'video'}
@@ -126,10 +154,29 @@ function CameraView() {
         <Ionicons name="close" size={22} color={colors.white} />
       </TouchableOpacity>
 
-      <View style={[styles.taskBar, { top: insets.top + spacing.sm }]}>
-        <Ionicons name="location" size={13} color={colors.white} />
-        <Text style={styles.taskText}>{DEFAULT_TASK_LABEL}</Text>
-      </View>
+      <TouchableOpacity
+        style={[styles.taskBar, { top: insets.top + spacing.sm }]}
+        onPress={() => setEditingTask(true)}
+        disabled={isRecording}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Change what you are shooting"
+      >
+        <Ionicons name="pricetag" size={13} color={colors.white} />
+        <Text style={styles.taskText}>{task}</Text>
+        <Ionicons name="create-outline" size={13} color={colors.onGlassMuted} />
+      </TouchableOpacity>
+
+      {flashSupported && (
+        <View style={[styles.flashButton, { top: insets.top + spacing.sm }]}>
+          <CameraRoundButton
+            icon={FLASH_ICONS[flash]}
+            caption={flash === 'auto' ? 'AUTO' : undefined}
+            onPress={cycleFlash}
+            accessibilityLabel={`Flash ${flash}. Tap to change`}
+          />
+        </View>
+      )}
 
       <View style={[styles.accuracyBar, { top: insets.top + spacing.sm + 40 }]}>
         {isRecording ? (
@@ -147,12 +194,29 @@ function CameraView() {
           onSelect={setZoom}
         />
         <CameraModeSwitch mode={mode} onChange={setMode} disabled={isRecording} />
-        <CameraShutterButton
-          onPress={onShutter}
-          mode={mode}
-          recording={isRecording}
-          disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
-        />
+        <View style={styles.shutterRow}>
+          <LastCaptureThumb
+            photo={lastPhoto}
+            onPress={() => navigation.navigate(photosTab as never)}
+            disabled={isRecording}
+          />
+          <CameraShutterButton
+            onPress={onShutter}
+            mode={mode}
+            recording={isRecording}
+            disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
+          />
+          {canFlip ? (
+            <CameraRoundButton
+              icon="camera-reverse-outline"
+              onPress={flip}
+              disabled={isRecording}
+              accessibilityLabel="Switch between front and back camera"
+            />
+          ) : (
+            <View style={styles.flipPlaceholder} />
+          )}
+        </View>
       </View>
 
       <CaptureToast
@@ -162,10 +226,40 @@ function CameraView() {
         warn={!lastSavedIsPrecise}
       />
 
+      {!isRecording && (
+        <CaptureTray
+          photos={tray}
+          onOpenOne={id => openNote(id)}
+          onOpenAll={() => openNote(tray.map(photo => photo.id))}
+        />
+      )}
+
       {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
+
+      <PhotoNoteSheet
+        visible={noteVisible}
+        note={sharedNote}
+        inventoryId={sharedInventoryId}
+        items={linkable}
+        onSave={saveNote}
+        onClose={closeNote}
+        choices={tray}
+        selectedIds={editing.map(photo => photo.id)}
+        onToggle={toggle}
+      />
+
+      <TaskEditorSheet
+        visible={editingTask}
+        task={task}
+        recent={recent}
+        onSave={setTask}
+        onClose={() => setEditingTask(false)}
+      />
     </View>
   );
 }
+
+const FLASH_ICONS = { off: 'flash-off', auto: 'flash-outline', on: 'flash' } as const;
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.black },
@@ -213,6 +307,15 @@ const styles = StyleSheet.create({
   },
   taskText: { fontFamily: fontFamily.semibold, color: colors.white, fontSize: 12.5 },
   accuracyBar: { position: 'absolute', alignSelf: 'center' },
+  flashButton: { position: 'absolute', right: spacing.md },
+  shutterRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xxl,
+  },
+  flipPlaceholder: { width: 44, height: 44 },
   controls: {
     position: 'absolute',
     bottom: 44,

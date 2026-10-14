@@ -66,7 +66,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipSelected: { backgroundColor: colors.glassStrong, borderWidth: 1.5, borderColor: colors.worker },
+  // White fill + black text: the old navy-on-black selection was nearly invisible over a dark scene.
+  chipSelected: { backgroundColor: colors.white },
   label: { fontFamily: fontFamily.semibold, fontSize: 12.5, color: colors.white },
-  labelSelected: { color: colors.workerBright },
+  labelSelected: { fontFamily: fontFamily.bold, color: colors.black },
 });

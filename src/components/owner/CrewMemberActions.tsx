@@ -3,29 +3,33 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { colors, fontFamily, radius, spacing, typography } from '@/constants/theme';
-import { Person, Role } from '@/types/domain';
+import { Person } from '@/types/domain';
 
 interface CrewMemberActionsProps {
   person: Person;
-  /** Signed-in owner looking at themselves: role and deactivate are locked. */
+  /** Signed-in owner looking at themselves: deactivate is locked. */
   isMe: boolean;
+  /** Superadmin looking at an owner/worker other than themselves. */
+  canChangeRole: boolean;
   saving: boolean;
   error: string | null;
   onSaveJobTitle: (jobTitle: string) => void;
-  onSetAppRole: (appRole: Role) => void;
+  onSetAppRole: (appRole: 'owner' | 'worker') => void;
   onSetActive: (active: boolean) => void;
 }
 
 const JOB_TITLE_MAX = 60;
 
 /**
- * Owner-side edits for one crew member: job title, worker/owner access, and
+ * Owner-side edits for one crew member: job title, worker/owner access
+ * (superadmin only), and
  * deactivate/reactivate. Changes that lock someone out or hand over full
  * access ask for confirmation first.
  */
 export default function CrewMemberActions({
   person,
   isMe,
+  canChangeRole,
   saving,
   error,
   onSaveJobTitle,
@@ -39,7 +43,7 @@ export default function CrewMemberActions({
   const isActive = person.active !== false;
   const titleChanged = jobTitle.trim().length > 0 && jobTitle.trim() !== person.role;
 
-  const confirmAppRole = (appRole: Role) => {
+  const confirmAppRole = (appRole: 'owner' | 'worker') => {
     if (appRole === person.appRole) return;
     Alert.alert(
       appRole === 'owner' ? `Make ${person.name} an owner?` : `Make ${person.name} a worker?`,
@@ -92,27 +96,32 @@ export default function CrewMemberActions({
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.label}>ACCESS</Text>
-      <View style={[styles.segment, isMe && styles.locked]}>
-        {(['worker', 'owner'] as const).map(appRole => {
-          const selected = person.appRole === appRole;
-          return (
-            <TouchableOpacity
-              key={appRole}
-              style={[styles.segmentItem, selected && styles.segmentItemSelected]}
-              disabled={isMe || saving || selected}
-              onPress={() => confirmAppRole(appRole)}
-            >
-              <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                {appRole === 'owner' ? 'Owner' : 'Worker'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {isMe && <Text style={styles.hint}>You can't change your own access or deactivate yourself.</Text>}
+      {canChangeRole && (
+        <>
+          <Text style={styles.label}>ACCESS</Text>
+          <View style={styles.segment}>
+            {(['worker', 'owner'] as const).map(appRole => {
+              const selected = person.appRole === appRole;
+              return (
+                <TouchableOpacity
+                  key={appRole}
+                  style={[styles.segmentItem, selected && styles.segmentItemSelected]}
+                  disabled={saving || selected}
+                  onPress={() => confirmAppRole(appRole)}
+                >
+                  <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                    {appRole === 'owner' ? 'Owner' : 'Worker'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+      {isMe && <Text style={styles.hint}>You can't deactivate yourself.</Text>}
 
-      {!isMe && (
+      {/* A superadmin account is managed by hand, never from the app. */}
+      {!isMe && person.appRole !== 'superadmin' && (
         <TouchableOpacity
           style={[styles.activeButton, isActive ? styles.deactivate : styles.reactivate]}
           disabled={saving}
@@ -170,7 +179,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: 3,
   },
-  locked: { opacity: 0.5 },
   segmentItem: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, alignItems: 'center' },
   segmentItemSelected: { backgroundColor: colors.surface },
   segmentText: { fontFamily: fontFamily.semibold, fontSize: 13, color: colors.textMuted },

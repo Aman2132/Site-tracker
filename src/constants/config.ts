@@ -70,11 +70,6 @@ export const GEOTAG_ACCURACY = {
   watchdogIntervalMs: 3000,
   /** How long to wait before re-subscribing after the watch failed (e.g. permission not granted yet). */
   retryIntervalMs: 2500,
-  /**
-   * The badge follows a smoothed accuracy (exponential average) so it does
-   * not flicker between 4 m and 19 m on every raw sample. 0-1: higher reacts faster.
-   */
-  displaySmoothing: 0.35,
 };
 
 /** Camera screen tunables. */
@@ -120,6 +115,60 @@ export const LOCAL_MEDIA = {
   galleryPageSize: 200,
   /** Longest task label kept in a capture's file name. */
   maxTaskChars: 60,
+};
+
+/** Owner's full-size photo viewer. */
+export const PHOTO_VIEWER = {
+  maxZoom: 5,
+  /** Double-tap jumps to this zoom (and back to 1× from anything above it). */
+  doubleTapZoom: 2.5,
+  doubleTapMs: 300,
+};
+
+/** Owner Activity feed. */
+export const ACTIVITY_FEED = {
+  /** The same event text repeated within this window is shown once, as "×2". */
+  mergeWindowMs: 10 * 60_000,
+};
+
+/** Home screen "Crew at this site" card. */
+export const SITE_CREW = {
+  /** A checked-in person with no position fix for this long is shown as "no signal" rather than here. */
+  signalLostAfterMs: 15 * 60_000,
+  /** How often the card re-checks that, since a silent phone sends nothing to react to. */
+  refreshMs: 60_000,
+  /** Site map: height in px, and the view's span in degrees when there is only one pin (~400 m). */
+  mapHeight: 240,
+  mapSpanDeg: 0.004,
+};
+
+/** Small previews uploaded next to each photo, so the admin dashboard's gallery stays light. */
+export const THUMBNAIL = {
+  /** Width in px; height follows the photo's aspect. */
+  widthPx: 400,
+  jpegQuality: 0.7,
+};
+
+/** The Camera screen's "what are you shooting" label. */
+export const CAPTURE_TASK = {
+  /** Used until the person types one, and when they clear it. */
+  defaultLabel: 'General',
+  maxChars: 60,
+  /** Recently used labels offered as one-tap chips. */
+  recentCount: 5,
+};
+
+/** The optional free-text note a person can add to a capture ("what I am doing"). */
+export const PHOTO_NOTE = {
+  maxChars: 500,
+};
+
+/** Background upload of new captures. */
+export const AUTO_SYNC = {
+  /** Wait after a capture before uploading, so a note can be added first (a synced photo's record is never edited). */
+  graceMs: 20000,
+  /** While anything is unsynced, try again this often (covers connectivity coming back). */
+  retryMs: 30000,
 };
 
 /** Simulated network latency for the mock api/ layer, so loading states are real. */
@@ -199,3 +248,18 @@ export const SUPABASE_CONFIG = {
 } as const;
 
 export const HAS_SUPABASE_CONFIG = SUPABASE_CONFIG.url.length > 0;
+
+/** Items tab: what the crew receive at a site. */
+export const INVENTORY = {
+  /** Unit chips, in the order shown. "Other" (typed) is always offered after these. */
+  units: ['pcs', 'bags', 'kg', 'tonne', 'm', 'ft', 'sq ft', 'litre', 'box', 'roll', 'set'],
+  maxNameChars: 80,
+  maxUnitChars: 20,
+  maxNoteChars: 300,
+  /** Largest quantity accepted; anything bigger is almost certainly a typo. */
+  maxQuantity: 1_000_000,
+  /** Past item names offered as one-tap chips. */
+  suggestionCount: 6,
+  /** While anything is waiting to sync, retry this often. */
+  retryMs: 30000,
+};

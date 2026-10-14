@@ -1,6 +1,11 @@
 import { Photo } from '@/types/domain';
 import {
+  autoSyncable,
+  sharedValue,
+  cleanNote,
   captureFileName,
+  countBySite,
+  displaySize,
   mergeById,
   mergePhotoLists,
   newLocalPhotoId,
@@ -114,5 +119,73 @@ describe('mergePhotoLists', () => {
     const remote = [photo({ id: 'r-new', takenAt: 3 }), photo({ id: 'r-old', takenAt: 1 })];
 
     expect(mergePhotoLists(local, remote).map(p => p.id)).toEqual(['r-new', 'l', 'r-old']);
+  });
+});
+
+describe('displaySize', () => {
+  // VisionCamera reports an upright phone photo as landscape pixels plus a landscape-* orientation.
+  it('swaps the sensor size for landscape-* orientations so portrait shots read as portrait', () => {
+    expect(displaySize(4032, 3024, 'landscape-left')).toEqual({ width: 3024, height: 4032 });
+    expect(displaySize(4032, 3024, 'landscape-right')).toEqual({ width: 3024, height: 4032 });
+  });
+
+  it('keeps it as reported otherwise', () => {
+    expect(displaySize(4032, 3024, 'portrait')).toEqual({ width: 4032, height: 3024 });
+  });
+});
+
+describe('countBySite', () => {
+  it('counts per site, keeping captures made while not checked in under undefined', () => {
+    const counts = countBySite([
+      photo({ id: '1', siteId: 'a' }),
+      photo({ id: '2', siteId: 'b' }),
+      photo({ id: '3', siteId: 'a' }),
+      photo({ id: '4' }),
+    ]);
+
+    expect([...counts]).toEqual([
+      ['a', 2],
+      ['b', 1],
+      [undefined, 1],
+    ]);
+  });
+});
+
+describe('cleanNote', () => {
+  it('trims and caps the length', () => {
+    expect(cleanNote('  pouring slab  ', 50)).toBe('pouring slab');
+    expect(cleanNote('abcdef', 3)).toBe('abc');
+    expect(cleanNote('ab  cd', 3)).toBe('ab');
+  });
+
+  it('turns whitespace-only into empty, meaning no note', () => {
+    expect(cleanNote('   ', 50)).toBe('');
+  });
+});
+
+describe('autoSyncable', () => {
+  const list = [
+    photo({ id: 'a', personId: 'worker-1' }),
+    photo({ id: 'b', personId: 'worker-1', synced: true }),
+    photo({ id: 'c', personId: 'other' }),
+    photo({ id: 'd', personId: 'worker-1' }),
+  ];
+
+  it("is this person's unsynced captures only", () => {
+    expect(autoSyncable(list, 'worker-1', []).map(p => p.id)).toEqual(['a', 'd']);
+  });
+
+  it('holds back the capture whose note is being typed', () => {
+    expect(autoSyncable(list, 'worker-1', ['a']).map(p => p.id)).toEqual(['d']);
+  });
+});
+
+describe('sharedValue', () => {
+  it('returns the common value, or blank when they differ or are missing', () => {
+    expect(sharedValue(['slab', 'slab'])).toBe('slab');
+    expect(sharedValue(['slab', 'wall'])).toBe('');
+    expect(sharedValue(['slab', undefined])).toBe('');
+    expect(sharedValue([undefined, undefined])).toBe('');
+    expect(sharedValue([])).toBe('');
   });
 });

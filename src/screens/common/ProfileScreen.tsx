@@ -4,22 +4,33 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ProfileAvatarEditor from '@/components/common/ProfileAvatarEditor';
+import SettingsCard from '@/components/common/SettingsCard';
 import SignOutButton from '@/components/common/SignOutButton';
 import { KEYBOARD, PROFILE } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/constants/theme';
 import { useProfileController } from '@/controllers/useProfileController';
+import { hasOwnerAccess, roleLabel } from '@/utils/roles';
 
 /** Profile tab, for owners and workers: their own name and photo, account details, sign out. */
 export default function ProfileScreen() {
-  const { profile, email, saving, error, saveName, changeAvatar, removeAvatar } = useProfileController();
+  const { profile, email, saving, error, saveName, changeAvatar, removeAvatar, settings } =
+    useProfileController();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(profile?.name ?? '');
   useEffect(() => setName(profile?.name ?? ''), [profile?.name]);
 
   if (!profile) return null;
-  const isOwner = profile.appRole === 'owner';
+  const isOwner = hasOwnerAccess(profile.appRole);
   const accent = isOwner ? colors.primary : colors.worker;
   const nameChanged = name.trim().length > 0 && name.trim() !== profile.name;
+  // Phone and team are set by the admin when they invite someone; self-signed-up accounts have neither.
+  const details: [label: string, value: string][] = [
+    ['Email', email ?? '—'],
+    ...(profile.phone ? [['Phone', profile.phone] as [string, string]] : []),
+    ['Job title', profile.role],
+    ...(profile.team ? [['Team', profile.team] as [string, string]] : []),
+    ['Account', roleLabel(profile.appRole)],
+  ];
 
   return (
     <KeyboardAwareScrollView
@@ -72,10 +83,21 @@ export default function ProfileScreen() {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <View style={[styles.card, shadow.sm]}>
-        <DetailRow label="Email" value={email ?? '—'} />
-        <DetailRow label="Job title" value={profile.role} />
-        <DetailRow label="Account" value={isOwner ? 'Owner' : 'Worker'} last />
+        {details.map(([label, value], index) => (
+          <DetailRow key={label} label={label} value={value} last={index === details.length - 1} />
+        ))}
       </View>
+
+      <SettingsCard
+        version={settings.version}
+        location={settings.location}
+        onLocationAction={settings.onLocationAction}
+        notificationsOn={settings.notificationsOn}
+        notificationAccess={settings.notificationAccess}
+        onNotificationsChange={settings.setNotifications}
+        busy={settings.busy}
+        accent={accent}
+      />
 
       <SignOutButton style={styles.signOut} />
     </KeyboardAwareScrollView>

@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { listGalleryCaptures } from '@/services/mediaLibraryService';
@@ -10,7 +11,11 @@ import { usePhotoStore } from '@/store/usePhotoStore';
 import { PersonProfile, Photo } from '@/types/domain';
 import { captureFileName } from '@/utils/photos';
 
-jest.mock('@/constants/config', () => ({ HAS_FIREBASE_CONFIG: true, LOCAL_MEDIA: { maxTaskChars: 60 } }));
+jest.mock('@/constants/config', () => ({
+  HAS_FIREBASE_CONFIG: true,
+  LOCAL_MEDIA: { maxTaskChars: 60 },
+  AUTO_SYNC: { graceMs: 1000, retryMs: 5000 },
+}));
 jest.mock('@/api/photosApi', () => ({ fetchPhotos: jest.fn(async () => []), uploadPhotos: jest.fn() }));
 jest.mock('@/api/eventsApi', () => ({ logEvent: jest.fn(async () => undefined) }));
 jest.mock('@/services/photoQueueStorage', () => ({
@@ -227,6 +232,7 @@ describe('usePhotoQueueController gallery recovery', () => {
 describe('usePhotoQueueController sync', () => {
   beforeEach(() => {
     resetMocks();
+    usePhotoStore.setState({ syncStatus: {}, noteEditingIds: [], trayIds: [] });
     useAuthStore.setState({ profile: worker });
     usePhotoStore.setState({
       photos: [queuedPhoto({ id: 'pending', synced: false })],
@@ -256,5 +262,130 @@ describe('usePhotoQueueController sync', () => {
     await waitFor(() => expect(usePhotoStore.getState().photos[0].synced).toBe(true));
     expect(result.current.syncError).toBeNull();
     expect(markLocalPhotosSynced).toHaveBeenCalledWith('worker-1', ['pending']);
+  });
+
+  it('lets an owner sync their own captures too, filed under the owner', async () => {
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    useAuthStore.setState({ profile: owner });
+    usePhotoStore.setState({
+      photos: [queuedPhoto({ id: 'mine', personId: 'owner-1', synced: false })],
+      loaded: true,
+      loadedFor: 'owner-1',
+    });
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncNow());
+
+    expect(uploadPhotos).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'mine', personId: 'owner-1' })],
+      expect.anything()
+    );
+    expect(markLocalPhotosSynced).toHaveBeenCalledWith('owner-1', ['mine']);
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('uploaded from Administrator'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'owner-1' })
+    );
+  });
+
+  it('logs one typed upload event per site, so the dashboard can file each', async () => {
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    usePhotoStore.setState({
+      photos: [
+        queuedPhoto({ id: 'a', siteId: 'site-1' }),
+        queuedPhoto({ id: 'b', siteId: 'site-1' }),
+        queuedPhoto({ id: 'c' }),
+      ],
+      loaded: true,
+      loadedFor: 'worker-1',
+    });
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncNow());
+
+    expect(logEvent).toHaveBeenCalledTimes(2);
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('2 photos uploaded'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'worker-1', siteId: 'site-1' })
+    );
+    expect(logEvent).toHaveBeenCalledWith(
+      expect.stringContaining('1 photo uploaded'),
+      'info',
+      expect.objectContaining({ type: 'upload', personId: 'worker-1', siteId: undefined })
+    );
+  });
+
+  it('syncs one photo on its own and includes its note', async () => {
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    usePhotoStore.setState({
+      photos: [queuedPhoto({ id: 'a', note: 'Pouring slab' }), queuedPhoto({ id: 'b' })],
+      loaded: true,
+      loadedFor: 'worker-1',
+    });
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncOne('a'));
+
+    expect(uploadPhotos).toHaveBeenCalledTimes(1);
+    expect(uploadPhotos).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'a', note: 'Pouring slab' })],
+      expect.anything()
+    );
+    expect(usePhotoStore.getState().photos.map(p => p.synced)).toEqual([true, false]);
+  });
+
+  it('flags the failed photo and never uploads one that is already uploading', async () => {
+    let finish: () => void = () => {};
+    (uploadPhotos as jest.Mock).mockReturnValueOnce(new Promise<void>(resolve => (finish = resolve)));
+
+    const { result } = renderHook(() => usePhotoQueueController());
+    let first: Promise<void> = Promise.resolve();
+    act(() => {
+      first = result.current.syncOne('pending');
+    });
+    await act(() => result.current.syncOne('pending'));
+    expect(uploadPhotos).toHaveBeenCalledTimes(1);
+    expect(usePhotoStore.getState().syncStatus).toEqual({ pending: 'syncing' });
+
+    await act(async () => {
+      finish();
+      await first;
+    });
+    expect(usePhotoStore.getState().syncStatus).toEqual({});
+
+    (uploadPhotos as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    usePhotoStore.setState({ photos: [queuedPhoto({ id: 'p2' })] });
+    await act(() => result.current.syncOne('p2'));
+    expect(usePhotoStore.getState().syncStatus).toEqual({ p2: 'failed' });
+    expect(result.current.syncError).toBeTruthy();
+  });
+
+  it('uploads a new capture by itself after the grace period', async () => {
+    jest.useFakeTimers();
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    try {
+      renderHook(() => usePhotoQueueController());
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(uploadPhotos).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('holds back a photo whose note is open', async () => {
+    jest.useFakeTimers();
+    usePhotoStore.setState({ noteEditingIds: ['pending'] });
+    try {
+      renderHook(() => usePhotoQueueController());
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(uploadPhotos).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

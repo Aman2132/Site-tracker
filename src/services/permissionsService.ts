@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { Linking } from 'react-native';
 
-import { LocationPermissionState } from '@/types/domain';
+import { LocationAccess, LocationPermissionState } from '@/types/domain';
 
 /**
  * Device permission requests. Pure I/O against the OS — no app state lives
@@ -51,4 +51,21 @@ export async function requestGallerySavePermission(): Promise<boolean> {
     `[permissions] media-library: status=${result?.status} granted=${result?.granted} canAskAgain=${result?.canAskAgain}`
   );
   return result?.granted ?? false;
+}
+
+/** Checks (never prompts) whether foreground location is already granted. */
+export async function hasForegroundLocationPermission(): Promise<boolean> {
+  const result = await Location.getForegroundPermissionsAsync().catch(() => null);
+  return result?.status === 'granted';
+}
+
+/**
+ * Checks (never prompts) how much location access the app has. 'blocked'
+ * means Android will no longer show the prompt, so only Settings can fix it.
+ */
+export async function getLocationAccess(): Promise<LocationAccess> {
+  const foreground = await Location.getForegroundPermissionsAsync();
+  if (foreground.status !== 'granted') return foreground.canAskAgain ? 'ask' : 'blocked';
+  const background = await Location.getBackgroundPermissionsAsync().catch(() => null);
+  return background?.status === 'granted' ? 'always' : 'whileUsing';
 }

@@ -5,7 +5,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import InitialsAvatar from '@/components/common/InitialsAvatar';
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 import { Person } from '@/types/domain';
-import { formatAccuracy } from '@/utils/formatters';
 
 const STATUS_COLOR: Record<Person['kind'], string> = {
   vehicle: colors.primary,
@@ -14,7 +13,16 @@ const STATUS_COLOR: Record<Person['kind'], string> = {
   stale: colors.stale,
 };
 
-export default function CrewListItem({ person, onPress }: { person: Person; onPress?: () => void }) {
+export default function CrewListItem({
+  person,
+  subtitle,
+  onPress,
+}: {
+  person: Person;
+  /** Status plus where/when, e.g. "On site · Tower B" (see utils/siteCrew crewSubtitle). */
+  subtitle: string;
+  onPress?: () => void;
+}) {
   return (
     <TouchableOpacity
       style={[styles.card, person.active === false && styles.cardInactive]}
@@ -33,8 +41,8 @@ export default function CrewListItem({ person, onPress }: { person: Person; onPr
       </View>
       <View style={styles.textColumn}>
         <Text style={styles.name}>{person.name}</Text>
-        <Text style={styles.meta}>
-          {person.role} · {person.active === false ? 'Deactivated' : formatAccuracy(person.accuracy)}
+        <Text style={styles.meta} numberOfLines={1}>
+          {person.role} · {subtitle}
         </Text>
       </View>
       {onPress && <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}

@@ -5,17 +5,26 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View }
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import EmptyState from '@/components/common/EmptyState';
+import FilterChips from '@/components/common/FilterChips';
 import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
+import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
 import PhotoQueueRow from '@/components/worker/PhotoQueueRow';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
+import { usePhotoFilterController } from '@/controllers/usePhotoFilterController';
+import { usePhotoNoteController } from '@/controllers/usePhotoNoteController';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { usePhotoStore } from '@/store/usePhotoStore';
 
+/** Worker "My photos" tab: their own captures, filterable by site and date, with sync. */
 export default function QueueScreen() {
-  const { photos, pendingCount, syncNow, syncing, syncError } = usePhotoQueueController();
+  const { photos, pendingCount, syncNow, syncOne, syncing, syncError, syncStatus } =
+    usePhotoQueueController();
+  const { sharedNote, sharedInventoryId, visible, linkable, openNote, closeNote, saveNote } =
+    usePhotoNoteController();
   const loaded = usePhotoStore(state => state.loaded);
   const insets = useSafeAreaInsets();
+  const filters = usePhotoFilterController(photos);
 
   if (!loaded) return <LoadingView />;
 
@@ -52,14 +61,53 @@ export default function QueueScreen() {
           <Text style={styles.errorText}>{syncError}</Text>
         </View>
       )}
+      {photos.length > 0 && (
+        <>
+          <FilterChips
+            options={filters.siteOptions}
+            selectedId={filters.siteFilter}
+            onSelect={filters.setSiteFilter}
+            accent={colors.worker}
+          />
+          <FilterChips
+            options={filters.dateOptions}
+            selectedId={filters.range}
+            onSelect={filters.setRange}
+            accent={colors.worker}
+          />
+        </>
+      )}
       <FlatList
-        data={photos}
+        data={filters.visiblePhotos}
         keyExtractor={photo => photo.id}
         contentContainerStyle={{ padding: spacing.lg }}
-        renderItem={({ item }) => <PhotoQueueRow photo={item} />}
+        renderItem={({ item }) => (
+          <PhotoQueueRow
+            photo={item}
+            status={syncStatus[item.id]}
+            onSync={() => syncOne(item.id)}
+            onEditNote={() => openNote(item.id)}
+          />
+        )}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          <EmptyState icon="camera-outline" message="No photos yet — take one from the Camera tab." />
+          <EmptyState
+            icon="camera-outline"
+            message={
+              filters.filtering
+                ? 'No photos match these filters.'
+                : 'No photos yet — take one from the Camera tab.'
+            }
+          />
         }
+      />
+      <PhotoNoteSheet
+        visible={visible}
+        note={sharedNote}
+        inventoryId={sharedInventoryId}
+        items={linkable}
+        onSave={saveNote}
+        onClose={closeNote}
       />
     </ScreenContainer>
   );
