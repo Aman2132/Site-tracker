@@ -97,12 +97,16 @@ src/
                   what's behind them.
   services/       Device/OS + backend-SDK integration with no app state:
                   expo-location wrapper, offline EXIF writer,
-                  mediaLibraryService.ts (saves a capture to the "Site
-                  Tracker" gallery album, and lists it to rebuild the Photos
-                  list after a reinstall), localMediaService.ts (moves a
-                  capture out of the cache into permanent app storage),
-                  photoQueueStorage.ts (each person's saved captures, one
-                  AsyncStorage key per person), batteryService.ts
+                  localMediaService.ts (moves a capture out of the cache into
+                  permanent app storage; deletes local files),
+                  photoDatabase.ts (opens the on-phone SQLite database),
+                  photoQueueStorage.ts (each person's saved captures, in
+                  SQLite; also migrates the old AsyncStorage lists),
+                  remotePhotoCache.ts (the backend's photo list as last
+                  fetched, in SQLite, so lists work offline),
+                  thumbnailService.ts + thumbnailCacheService.ts (make a
+                  capture's preview; download other people's previews),
+                  batteryService.ts
                   (expo-battery), avatarService.ts (picks + shrinks a
                   profile photo), activityRecognitionService.ts (wraps the
                   local native module below), permission requests, AsyncStorage read/write,

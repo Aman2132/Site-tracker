@@ -23,8 +23,12 @@ interface PhotoState {
   setPhotos: (photos: Photo[], forPersonId: string) => void;
   /** Adds a finished capture (id already assigned — see utils/photos newLocalPhotoId) to the top. */
   addPhoto: (photo: Photo) => void;
+  /** Drops these photos from the list (an admin deleted them). */
+  removePhotos: (ids: string[]) => void;
   markAllSynced: () => void;
   markSynced: (ids: string[]) => void;
+  /** Photo id → file URI of its small preview saved on this phone. */
+  setLocalThumbs: (thumbs: Record<string, string>) => void;
   /** Empty note removes it. */
   setNote: (id: string, note: string) => void;
   /** Null unlinks. */
@@ -45,6 +49,12 @@ export const usePhotoStore = create<PhotoState>(set => ({
   trayIds: [],
   setPhotos: (photos, forPersonId) => set({ photos, loaded: true, loadedFor: forPersonId }),
   addPhoto: photo => set(state => ({ photos: [photo, ...state.photos] })),
+  removePhotos: ids =>
+    set(state => ({ photos: state.photos.filter(photo => !ids.includes(photo.id)) })),
+  setLocalThumbs: thumbs =>
+    set(state => ({
+      photos: state.photos.map(photo => (thumbs[photo.id] ? { ...photo, localThumbUri: thumbs[photo.id] } : photo)),
+    })),
   markAllSynced: () =>
     set(state => ({
       photos: state.photos.map(photo => (photo.synced ? photo : { ...photo, synced: true })),

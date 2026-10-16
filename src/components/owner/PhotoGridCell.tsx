@@ -28,7 +28,7 @@ export default function PhotoGridCell({ photo, onPress }: { photo: Photo; onPres
           </View>
         ) : (
           <Image
-            source={{ uri: photo.thumbUrl ?? photo.uri }}
+            source={{ uri: photo.localThumbUri ?? photo.thumbUrl ?? photo.uri }}
             style={styles.thumb}
             onLoad={() => setState('loaded')}
             onError={() => setState('failed')}

@@ -26,7 +26,7 @@ export default function PhotoQueueRow({ photo, status, onSync, onEditNote }: Pho
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <Image source={{ uri: photo.uri }} style={styles.thumb} />
+        <Image source={{ uri: photo.localThumbUri ?? photo.uri }} style={styles.thumb} />
         <View style={styles.textColumn}>
           <Text style={styles.title}>
             {photo.mediaType === 'video' ? `▶ ${photo.task}` : photo.task}

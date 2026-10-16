@@ -80,18 +80,11 @@ export const CAMERA = {
    * JS-side EXIF rewrite (and for the upload) to handle on a phone.
    */
   photoTarget: { width: 4032, height: 3024 },
-  videoTarget: { width: 1920, height: 1080 },
-  videoFps: 30,
   /** A touch counts as a tap-to-focus only if it stays within this many px and lifts within this many ms. */
   tapSlopPx: 12,
   tapMaxMs: 350,
   /** How long the focus ring stays on screen. */
   focusIndicatorMs: 1100,
-  /**
-   * Videos are uploaded by reading the whole file into JS memory, so they are
-   * kept short until uploads can stream.
-   */
-  maxVideoSeconds: 30,
   /** Zoom is capped here even if the lens can go further — past this it is just noise. */
   maxZoom: 10,
   /** Times we quietly retry when Android reports the camera busy/restricted before showing a Try again button. */
@@ -101,20 +94,33 @@ export const CAMERA = {
 };
 
 /**
- * Where captures live on the phone. The app's own copy sits in private
- * storage (survives sign-out and restarts, not an uninstall); the gallery copy
- * goes into one named album, which does survive an uninstall and is what the
- * Photos list is rebuilt from after a reinstall.
+ * Where captures live on the phone: the app's private storage (survives
+ * sign-out and restarts, not an uninstall), with the list of them in the
+ * SQLite database below. A capture is never copied into the gallery, so
+ * deleting it removes the only copy on the phone.
  */
 export const LOCAL_MEDIA = {
   /** Folder under the app's document directory, one subfolder per person. */
   captureDir: 'captures',
-  /** Gallery album every capture is saved into. */
-  galleryAlbum: 'Site Tracker',
-  /** Assets fetched per page when scanning the album on sign-in. */
-  galleryPageSize: 200,
   /** Longest task label kept in a capture's file name. */
   maxTaskChars: 60,
+};
+
+/** The on-phone SQLite database holding every person's photo list. */
+export const PHOTO_DATABASE = {
+  fileName: 'site-tracker.db',
+};
+
+/**
+ * Thumbnails of other people's photos (the owner's list, or your own after a
+ * reinstall), saved on the phone so the list shows offline. Originals are not
+ * saved — they load from the backend when opened.
+ */
+export const THUMBNAIL_CACHE = {
+  /** Folder under the app's document directory. */
+  dir: 'thumbnail-cache',
+  /** Most thumbnails kept at once, newest photos first. About 30 KB each. */
+  maxFiles: 120,
 };
 
 /** Owner's full-size photo viewer. */

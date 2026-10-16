@@ -2,18 +2,31 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
   addLocalPhoto,
+  deleteLocalPhotos,
   loadLocalPhotos,
   markLocalPhotosSynced,
-  saveLocalPhotos,
+  setLocalPhotoInventory,
+  setLocalPhotoNote,
+  setLocalPhotoThumb,
 } from '@/services/photoQueueStorage';
+import { createFakePhotoDatabase } from '@/test-utils/fakePhotoDatabase';
 import { Photo } from '@/types/domain';
 
-// An in-memory AsyncStorage, so the tests can check what ends up under which key.
+jest.mock('@/constants/config', () => ({ PHOTO_DATABASE: { fileName: 'test.db' } }));
+
+// An in-memory database, so the tests can check what ends up stored.
+const mockDatabase = createFakePhotoDatabase();
+jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn(async () => mockDatabase) }));
+
+// An in-memory AsyncStorage: only the old lists are read from it now.
 const mockDisk = new Map<string, string>();
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(async (key: string) => mockDisk.get(key) ?? null),
   setItem: jest.fn(async (key: string, value: string) => {
     mockDisk.set(key, value);
+  }),
+  removeItem: jest.fn(async (key: string) => {
+    mockDisk.delete(key);
   }),
 }));
 
@@ -37,6 +50,7 @@ const ids = (photos: Photo[]) => photos.map(p => p.id);
 
 describe('photoQueueStorage', () => {
   beforeEach(() => {
+    mockDatabase.rows.clear();
     mockDisk.clear();
     jest.clearAllMocks();
   });
@@ -45,11 +59,17 @@ describe('photoQueueStorage', () => {
     expect(await loadLocalPhotos('worker-1')).toEqual([]);
   });
 
-  it('reads a corrupt stored list as empty rather than throwing', async () => {
-    // A half-written value after a crash mid-save would look like this.
-    mockDisk.set('photoQueue:worker-1', '[{"id":"oh no');
+  it('skips a row whose stored JSON is damaged rather than failing the list', async () => {
+    mockDatabase.rows.set('worker-1|bad', {
+      viewer_id: 'worker-1',
+      id: 'bad',
+      origin: 'local',
+      taken_at: 1,
+      data: '{"id":"oh no',
+    });
+    await addLocalPhoto(photo({ id: 'good', takenAt: 2 }));
 
-    expect(await loadLocalPhotos('worker-1')).toEqual([]);
+    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['good']);
   });
 
   it("keeps each person's captures apart on a shared phone", async () => {
@@ -60,62 +80,151 @@ describe('photoQueueStorage', () => {
     expect(ids(await loadLocalPhotos('worker-2'))).toEqual(['b']);
   });
 
-  it("never lets one person's save touch another person's list", async () => {
-    // The old bug: the admin signing in replaced the one shared list with theirs.
-    await addLocalPhoto(photo({ id: 'mine', personId: 'worker-1' }));
+  it('lists the newest capture first', async () => {
+    await addLocalPhoto(photo({ id: 'old', takenAt: 1 }));
+    await addLocalPhoto(photo({ id: 'new', takenAt: 9 }));
 
-    await saveLocalPhotos('owner-1', []);
-
-    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['mine']);
+    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['new', 'old']);
   });
 
-  it('keeps every capture when several land at once', async () => {
-    await Promise.all([
-      addLocalPhoto(photo({ id: 'a' })),
-      addLocalPhoto(photo({ id: 'b' })),
-      addLocalPhoto(photo({ id: 'c' })),
-    ]);
-
-    expect(ids(await loadLocalPhotos('worker-1')).sort()).toEqual(['a', 'b', 'c']);
-  });
-
-  it('does not store the same capture twice', async () => {
+  it('does not add the same capture twice', async () => {
     await addLocalPhoto(photo({ id: 'a' }));
-    await addLocalPhoto(photo({ id: 'a' }));
+    await addLocalPhoto(photo({ id: 'a', task: 'changed' }));
 
-    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['a']);
-  });
-
-  it("carries a person's photos over from the old shared list, and only theirs", async () => {
-    mockDisk.set(
-      'photoQueue',
-      JSON.stringify([
-        photo({ id: 'old-mine', personId: 'worker-1' }),
-        photo({ id: 'old-theirs', personId: 'worker-2' }),
-      ])
-    );
-    await addLocalPhoto(photo({ id: 'new-mine', personId: 'worker-1' }));
-
-    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['new-mine', 'old-mine']);
-    // Written to their own key, so it no longer depends on the old list.
-    expect(ids(JSON.parse(mockDisk.get('photoQueue:worker-1') ?? '[]'))).toEqual(['new-mine', 'old-mine']);
+    const stored = await loadLocalPhotos('worker-1');
+    expect(stored).toHaveLength(1);
+    expect(stored[0].task).toBe('Task');
   });
 
   it('marks only the given captures synced', async () => {
-    await addLocalPhoto(photo({ id: 'a' }));
-    await addLocalPhoto(photo({ id: 'b' }));
+    await addLocalPhoto(photo({ id: 'a', takenAt: 2 }));
+    await addLocalPhoto(photo({ id: 'b', takenAt: 1 }));
 
     await markLocalPhotosSynced('worker-1', ['a']);
 
-    const stored = await loadLocalPhotos('worker-1');
-    expect(stored.find(p => p.id === 'a')?.synced).toBe(true);
-    expect(stored.find(p => p.id === 'b')?.synced).toBe(false);
+    expect((await loadLocalPhotos('worker-1')).map(p => [p.id, p.synced])).toEqual([
+      ['a', true],
+      ['b', false],
+    ]);
   });
 
-  it('does not reject when the device write fails', async () => {
-    // Runs on every capture — an unhandled rejection would surface as a redbox mid-shot.
-    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
+  it('sets, changes and clears a note', async () => {
+    await addLocalPhoto(photo({ id: 'a' }));
 
-    await expect(addLocalPhoto(photo({ id: 'a' }))).resolves.toBeUndefined();
+    await setLocalPhotoNote('worker-1', 'a', 'Pouring slab');
+    expect((await loadLocalPhotos('worker-1'))[0].note).toBe('Pouring slab');
+
+    await setLocalPhotoNote('worker-1', 'a', '');
+    expect(await loadLocalPhotos('worker-1')).toEqual([expect.not.objectContaining({ note: expect.anything() })]);
+  });
+
+  it('links and unlinks an inventory entry', async () => {
+    await addLocalPhoto(photo({ id: 'a' }));
+
+    await setLocalPhotoInventory('worker-1', 'a', 'inv-1');
+    expect((await loadLocalPhotos('worker-1'))[0].inventoryId).toBe('inv-1');
+
+    await setLocalPhotoInventory('worker-1', 'a', null);
+    expect((await loadLocalPhotos('worker-1'))[0]).not.toHaveProperty('inventoryId');
+  });
+
+  it("remembers where a capture's preview is saved", async () => {
+    await addLocalPhoto(photo({ id: 'a' }));
+
+    await setLocalPhotoThumb('worker-1', 'a', 'file:///docs/captures/worker-1/a_thumb.jpg');
+
+    expect((await loadLocalPhotos('worker-1'))[0].localThumbUri).toBe('file:///docs/captures/worker-1/a_thumb.jpg');
+  });
+
+  it('keeps two quick changes to the same capture instead of losing one', async () => {
+    await addLocalPhoto(photo({ id: 'a' }));
+
+    await Promise.all([
+      setLocalPhotoNote('worker-1', 'a', 'note'),
+      setLocalPhotoThumb('worker-1', 'a', 'file:///t.jpg'),
+      markLocalPhotosSynced('worker-1', ['a']),
+    ]);
+
+    expect((await loadLocalPhotos('worker-1'))[0]).toMatchObject({
+      note: 'note',
+      localThumbUri: 'file:///t.jpg',
+      synced: true,
+    });
+  });
+
+  it('ignores a change to a capture that is not there', async () => {
+    await setLocalPhotoNote('worker-1', 'missing', 'x');
+
+    expect(await loadLocalPhotos('worker-1')).toEqual([]);
+  });
+
+  it("deletes only the named captures, and only from that person's list", async () => {
+    await addLocalPhoto(photo({ id: 'a', takenAt: 3 }));
+    await addLocalPhoto(photo({ id: 'b', takenAt: 2 }));
+    await addLocalPhoto(photo({ id: 'a', personId: 'worker-2' }));
+
+    await deleteLocalPhotos('worker-1', ['a']);
+
+    expect(ids(await loadLocalPhotos('worker-1'))).toEqual(['b']);
+    expect(ids(await loadLocalPhotos('worker-2'))).toEqual(['a']);
+  });
+
+  it('never throws when the database cannot be opened, reading as nothing stored', async () => {
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock('expo-sqlite', () => ({
+        openDatabaseAsync: jest.fn(async () => {
+          throw new Error('disk full');
+        }),
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const storage = require('@/services/photoQueueStorage') as typeof import('@/services/photoQueueStorage');
+
+      expect(await storage.loadLocalPhotos('worker-1')).toEqual([]);
+      await expect(storage.addLocalPhoto(photo({}))).resolves.toBeUndefined();
+    });
+  });
+});
+
+describe('moving the old AsyncStorage lists into SQLite', () => {
+  beforeEach(() => {
+    mockDatabase.rows.clear();
+    mockDisk.clear();
+    jest.clearAllMocks();
+  });
+
+  it("carries a person's old list over, then removes it", async () => {
+    mockDisk.set('photoQueue:old-1', JSON.stringify([photo({ id: 'x', personId: 'old-1', takenAt: 2 })]));
+
+    expect(ids(await loadLocalPhotos('old-1'))).toEqual(['x']);
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith('photoQueue:old-1');
+    expect(mockDisk.has('photoQueue:old-1')).toBe(false);
+  });
+
+  it('carries over only this person from the oldest shared list, leaving the others there', async () => {
+    mockDisk.set(
+      'photoQueue',
+      JSON.stringify([photo({ id: 'mine', personId: 'old-2' }), photo({ id: 'theirs', personId: 'old-3' })])
+    );
+
+    expect(ids(await loadLocalPhotos('old-2'))).toEqual(['mine']);
+    expect(JSON.parse(mockDisk.get('photoQueue') as string).map((p: Photo) => p.id)).toEqual(['theirs']);
+
+    expect(ids(await loadLocalPhotos('old-3'))).toEqual(['theirs']);
+    expect(mockDisk.has('photoQueue')).toBe(false);
+  });
+
+  it('does not duplicate a capture that is in both the old list and the database', async () => {
+    mockDisk.set('photoQueue:old-4', JSON.stringify([photo({ id: 'dup', personId: 'old-4' })]));
+    await addLocalPhoto(photo({ id: 'dup', personId: 'old-4', task: 'already in database' }));
+
+    const stored = await loadLocalPhotos('old-4');
+    expect(stored).toHaveLength(1);
+    expect(stored[0].task).toBe('already in database');
+  });
+
+  it('treats a damaged old list as empty and still starts', async () => {
+    mockDisk.set('photoQueue:old-5', '[{"id":"oh no');
+
+    expect(await loadLocalPhotos('old-5')).toEqual([]);
   });
 });

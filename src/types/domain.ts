@@ -129,16 +129,15 @@ export interface Person extends PersonProfile {
   siteId?: string;
 }
 
-/** What a capture is. Records saved before video existed have no `mediaType` — treat those as photos. */
+/**
+ * What a capture is. The app only takes photos now; 'video' remains for clips
+ * recorded before video was removed. Records with no `mediaType` are photos.
+ */
 export type MediaKind = 'photo' | 'video';
-
-/** Photo/video switch on the Camera screen. */
-export type CaptureMode = MediaKind;
 
 /**
  * One captured item. Still named Photo because that is what the whole app
- * (queue, sync, Firestore `photos` collection) already calls it; videos ride
- * the same pipeline, distinguished by `mediaType`.
+ * (queue, sync, Firestore `photos` collection) already calls it.
  */
 export interface Photo {
   id: string;
@@ -166,8 +165,22 @@ export interface Photo {
   /** Pixel size of the original, for the dashboard's gallery layout. Absent on older captures. */
   width?: number;
   height?: number;
-  /** Small preview in Supabase, made on the phone at sync. Absent for videos and older uploads. */
+  /** Small preview in Supabase. Absent for videos and older uploads. */
   thumbUrl?: string;
+  /**
+   * Small preview saved on this phone (permanent app storage): made right
+   * after a capture, or downloaded for a backend photo. Never uploaded; absent
+   * until it exists. Deleted together with the photo.
+   */
+  localThumbUri?: string;
+}
+
+/** A note the dashboard leaves when it deletes a photo (Firestore `deletedPhotos/{id}`), so phones remove their copy. */
+export interface DeletedPhoto {
+  /** The deleted backend record's id. */
+  id: string;
+  personId: string;
+  takenAt: number;
 }
 
 export type EventKind = 'info' | 'warn';

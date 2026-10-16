@@ -5,7 +5,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera } from 'react-native-vision-camera';
 
-import CameraModeSwitch from '@/components/worker/CameraModeSwitch';
 import CameraPermissionGate from '@/components/worker/CameraPermissionGate';
 import CameraProblemOverlay from '@/components/worker/CameraProblemOverlay';
 import CameraRoundButton from '@/components/worker/CameraRoundButton';
@@ -17,7 +16,6 @@ import FocusIndicator from '@/components/worker/FocusIndicator';
 import GpsAccuracyBadge from '@/components/worker/GpsAccuracyBadge';
 import LastCaptureThumb from '@/components/worker/LastCaptureThumb';
 import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
-import RecordingBadge from '@/components/worker/RecordingBadge';
 import TaskEditorSheet from '@/components/worker/TaskEditorSheet';
 import { CAMERA } from '@/constants/config';
 import { colors, fontFamily, radius, spacing } from '@/constants/theme';
@@ -47,13 +45,8 @@ function CameraView() {
     device,
     format,
     isActive,
-    mode,
-    setMode,
-    audioEnabled,
     photoHdr,
-    videoHdr,
     lowLightBoost,
-    videoStabilizationMode,
     focusPoint,
     zoom,
     zoomStops,
@@ -61,7 +54,6 @@ function CameraView() {
     flash,
     flashSupported,
     cycleFlash,
-    torch,
     canFlip,
     flip,
     attempt,
@@ -72,8 +64,6 @@ function CameraView() {
     onShutter,
     pinchHandlers,
     isSaving,
-    isRecording,
-    recordingMs,
     lastSavedLabel,
     lastSavedIsPrecise,
     lastCaptureId,
@@ -114,15 +104,10 @@ function CameraView() {
             device={device}
             format={format}
             zoom={zoom}
-            torch={torch}
             isActive={isActive}
-            photo={mode === 'photo'}
-            video={mode === 'video'}
-            audio={audioEnabled}
+            photo
             photoHdr={photoHdr}
-            videoHdr={videoHdr}
             lowLightBoost={lowLightBoost}
-            videoStabilizationMode={videoStabilizationMode}
             photoQualityBalance="quality"
             onError={onCameraError}
             onInitialized={onCameraInitialized}
@@ -141,12 +126,10 @@ function CameraView() {
         </View>
       )}
 
-      {/* The tab bar is hidden on this screen, so this is the visible way out.
-            Disabled mid-recording so a clip can't be abandoned by accident. */}
+      {/* The tab bar is hidden on this screen, so this is the visible way out. */}
       <TouchableOpacity
-        style={[styles.closeButton, { top: insets.top + spacing.sm }, isRecording && styles.closeDisabled]}
+        style={[styles.closeButton, { top: insets.top + spacing.sm }]}
         onPress={() => navigation.goBack()}
-        disabled={isRecording}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel="Close camera"
@@ -157,7 +140,6 @@ function CameraView() {
       <TouchableOpacity
         style={[styles.taskBar, { top: insets.top + spacing.sm }]}
         onPress={() => setEditingTask(true)}
-        disabled={isRecording}
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel="Change what you are shooting"
@@ -179,11 +161,7 @@ function CameraView() {
       )}
 
       <View style={[styles.accuracyBar, { top: insets.top + spacing.sm + 40 }]}>
-        {isRecording ? (
-          <RecordingBadge elapsedMs={recordingMs} maxMs={CAMERA.maxVideoSeconds * 1000} />
-        ) : (
-          <GpsAccuracyBadge accuracyMeters={liveAccuracy} />
-        )}
+        <GpsAccuracyBadge accuracyMeters={liveAccuracy} />
       </View>
 
       <View style={styles.controls} pointerEvents="box-none">
@@ -193,24 +171,13 @@ function CameraView() {
           neutralZoom={device?.neutralZoom ?? 1}
           onSelect={setZoom}
         />
-        <CameraModeSwitch mode={mode} onChange={setMode} disabled={isRecording} />
         <View style={styles.shutterRow}>
-          <LastCaptureThumb
-            photo={lastPhoto}
-            onPress={() => navigation.navigate(photosTab as never)}
-            disabled={isRecording}
-          />
-          <CameraShutterButton
-            onPress={onShutter}
-            mode={mode}
-            recording={isRecording}
-            disabled={!device || !isActive || !hasFix || (mode === 'photo' && isSaving)}
-          />
+          <LastCaptureThumb photo={lastPhoto} onPress={() => navigation.navigate(photosTab as never)} />
+          <CameraShutterButton onPress={onShutter} disabled={!device || !isActive || !hasFix || isSaving} />
           {canFlip ? (
             <CameraRoundButton
               icon="camera-reverse-outline"
               onPress={flip}
-              disabled={isRecording}
               accessibilityLabel="Switch between front and back camera"
             />
           ) : (
@@ -226,13 +193,11 @@ function CameraView() {
         warn={!lastSavedIsPrecise}
       />
 
-      {!isRecording && (
-        <CaptureTray
-          photos={tray}
-          onOpenOne={id => openNote(id)}
-          onOpenAll={() => openNote(tray.map(photo => photo.id))}
-        />
-      )}
+      <CaptureTray
+        photos={tray}
+        onOpenOne={id => openNote(id)}
+        onOpenAll={() => openNote(tray.map(photo => photo.id))}
+      />
 
       {problem && <CameraProblemOverlay message={problem.message} onRetry={retry} />}
 
@@ -293,7 +258,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeDisabled: { opacity: 0.35 },
   taskBar: {
     position: 'absolute',
     alignSelf: 'center',

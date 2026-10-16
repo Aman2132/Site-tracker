@@ -16,7 +16,7 @@ src/constants/            theme.ts, config.ts, mockData.ts (seed script source)
 src/api/                  Backend boundary — Firebase (Firestore + Realtime DB) for
                           everything except photo files, which are Supabase Storage
 src/services/             Device integration + auth/push: location, camera EXIF,
-                          device gallery, storage, permissions, authService,
+                          local photo database, storage, permissions, authService,
                           pushService
 src/controllers/          Hooks wiring api/services -> store (business logic)
 src/store/                Zustand stores (state only)
@@ -36,7 +36,7 @@ api/ owns the backend boundary (Firebase).
 ## Run it
 
 Uses `react-native-vision-camera`, `react-native-maps` (Google Maps), `expo-sensors`, `expo-notifications` and
-`expo-media-library`, all of which need native code Expo Go can't run — this
+`expo-sqlite`, all of which need native code Expo Go can't run — this
 is a custom dev-client build, not the managed Expo Go workflow.
 
 ```
@@ -47,10 +47,11 @@ npm run android
 ```
 
 On first launch, grant "Allow all the time" location and camera permission
-for the worker flows to work. The Camera tab also asks for write-only photo
-access on first open — that's what lets a capture land in the device gallery
-with its GPS intact. Declining is safe: the photo still saves inside the app
-and still syncs, it just won't appear in Photos.
+for the worker flows to work. Captures are not added to the phone's gallery:
+the only copy on the phone is inside the app (private storage + a SQLite list),
+so a photo an admin deletes from the dashboard is removed from the phone too.
+A capture that hasn't synced yet is lost if the app is uninstalled or its data
+is cleared, so keep the phone online until the photo shows as uploaded.
 
 ```
 npm run typecheck   # tsc --noEmit

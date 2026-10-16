@@ -129,23 +129,50 @@ service cloud.firestore {
         && request.resource.data.editedAt is number
         // Every correction must restamp editedAt, so "Corrected" always shows the latest one.
         && request.resource.data.diff(resource.data).affectedKeys().hasAny(['editedAt']);
-      allow delete: if false;
+      // Superadmin only: the dashboard's Storage → Clean up removes sessions older than a chosen age.
+      allow delete: if isSuperadmin();
     }
 
-    // Audit trail of admin actions. Every owner/superadmin writes one entry per
-    // action as themselves (the dashboard does it automatically, see attempt()
-    // in its lib/store.tsx); only a superadmin can read them. Append-only.
+    // Audit trail of admin actions. Every owner/superadmin writes entries as
+    // themselves (the dashboard does it automatically, see attempt() in its
+    // lib/store.tsx): changes with their before→after values, sign-ins and
+    // sign-outs, exports, and actions that failed or were refused (with the
+    // reason). Only a superadmin can read them. Append-only, never deleted.
     match /adminAudit/{entryId} {
       allow read: if isSuperadmin();
       allow create: if isOwner()
         && request.resource.data.actorId == request.auth.uid
         && request.resource.data.action is string
-        && request.resource.data.action.size() <= 200
+        && request.resource.data.action.size() <= 300
         && request.resource.data.at is number
         && request.resource.data.get('note', '') is string
         && request.resource.data.get('note', '').size() <= 500
-        && request.resource.data.keys().hasOnly(['actorId', 'actorName', 'action', 'targetType', 'targetId', 'note', 'at']);
+        && request.resource.data.get('changes', '') is string
+        && request.resource.data.get('changes', '').size() <= 1000
+        && request.resource.data.get('reason', '') is string
+        && request.resource.data.get('reason', '').size() <= 300
+        && request.resource.data.get('kind', 'change') in ['change', 'auth', 'failed', 'export']
+        && request.resource.data.keys().hasOnly(['actorId', 'actorName', 'action', 'targetType', 'targetId', 'note', 'changes', 'reason', 'kind', 'at']);
       allow update, delete: if false;
+    }
+
+    // Page views and outbound clicks in the admin dashboard: one tiny doc per
+    // page opened (batched, repeats within minutes dropped, capped per hour by
+    // the dashboard). Kept apart from adminAudit because it is high-volume:
+    // the superadmin reads it and can delete old ones (Storage → Clean up).
+    match /adminViews/{viewId} {
+      allow read: if isSuperadmin();
+      allow create: if isOwner()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.path is string
+        && request.resource.data.path.size() <= 300
+        && request.resource.data.get('title', '') is string
+        && request.resource.data.get('title', '').size() <= 120
+        && request.resource.data.get('kind', 'view') in ['view', 'external']
+        && request.resource.data.at is number
+        && request.resource.data.keys().hasOnly(['actorId', 'actorName', 'path', 'title', 'kind', 'at']);
+      allow update: if false;
+      allow delete: if isSuperadmin();
     }
 
     // Photos: the owner sees everything; a worker sees only their own. A
@@ -168,6 +195,23 @@ service cloud.firestore {
       allow create: if isActive() && request.resource.data.personId == request.auth.uid;
       allow update: if false;
       allow delete: if isOwner();
+    }
+
+    // "This photo was deleted" notes, one per deleted photo (same id as the
+    // photos/{id} record that was removed). The dashboard writes one just before
+    // it deletes the record; each phone reads its own person's notes at start-up
+    // and removes its local copy of those photos, so a deleted photo is gone
+    // from the phone too. A worker's query must filter on personId (like photos).
+    // Only the id, who took it and when are stored — nothing else about the photo.
+    // Written by an owner only; never edited by hand.
+    match /deletedPhotos/{photoId} {
+      allow read: if isOwner() || (signedIn() && resource.data.personId == request.auth.uid);
+      allow create, update: if isOwner()
+        && request.resource.data.personId is string
+        && request.resource.data.takenAt is number
+        && request.resource.data.deletedAt is number
+        && request.resource.data.keys().hasOnly(['personId', 'takenAt', 'deletedAt']);
+      allow delete: if isSuperadmin();
     }
 
     // Inventory: one doc per item received at a site. The crew log what
@@ -225,10 +269,13 @@ service cloud.firestore {
     }
 
     // Activity feed: shared, append-only.
+    // Only the superadmin can delete (the dashboard's Storage → Clean up, which
+    // removes events older than a chosen age); nobody can edit.
     match /events/{eventId} {
       allow read: if signedIn();
       allow create: if isActive();
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isSuperadmin();
     }
 
     // Expo push tokens, one doc per user. Separate from /people (which is

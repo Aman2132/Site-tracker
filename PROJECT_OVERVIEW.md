@@ -43,7 +43,7 @@ Which tab set you get is decided entirely by the `appRole` field on your
 | Camera | `react-native-vision-camera` | Native module |
 | Location | `expo-location` + `expo-task-manager` | Background foreground-service task |
 | EXIF | `piexifjs` | GPS burned in locally, fully offline |
-| Gallery | `expo-media-library` | Second copy of each capture into the device's own photos |
+| Local photo list | `expo-sqlite` | Each person's captures and the cached backend list, on the phone |
 | Identity | Firebase Auth (email/password) | Owner accounts pre-seeded; workers can self-signup |
 | Database | Firestore + Firebase Realtime Database | Split deliberately — see §4 |
 | File storage | Supabase Storage | Not Firebase Storage — see §4 |
@@ -224,7 +224,7 @@ classDiagram
 | `Photo` file | Supabase | `Photos/{personId}/{photoId}.jpg` |
 | `AppEvent` | Firestore | `events/{autoId}` |
 | Push token | Firestore | `pushTokens/{uid}` |
-| Unsynced photo queue | Device | AsyncStorage key `photoQueue` |
+| Photo queue + cached backend list | Device | SQLite `photos` table (see `photoDatabase.ts`) |
 
 ---
 
@@ -360,9 +360,8 @@ sequenceDiagram
     participant CAM as VisionCamera
     participant CTRL as usePhotoCaptureController
     participant EXIF as exifService
-    participant GAL as Device gallery
     participant STORE as usePhotoStore
-    participant DISK as AsyncStorage
+    participant DISK as SQLite (photoQueueStorage)
     participant QC as usePhotoQueueController
     participant SB as Supabase Storage
     participant FS as Firestore
@@ -372,9 +371,8 @@ sequenceDiagram
     CTRL->>CTRL: read latest GPS fix from watch
     CTRL->>EXIF: writeGeotag(uri, lat, lng)
     EXIF-->>CTRL: new -geo.jpg URI (offline)
-    CTRL->>GAL: saveToDeviceGallery() — best effort
+    CTRL->>DISK: addLocalPhoto() — the only copy on the phone
     CTRL->>STORE: addPhoto(synced false)
-    STORE->>DISK: mirrored on every change
 
     Note over U,FS: later, only when the worker taps Sync now
 
@@ -404,16 +402,13 @@ stateDiagram-v2
 > on regaining connectivity. The only trigger is the worker tapping "Sync
 > now" on the Queue screen. See §9.
 
-**Each capture lands in two independent places.** The app's own queue
-(`usePhotoStore` + AsyncStorage) is the source of truth for syncing; a copy
-also goes into the device's gallery via
-[`mediaLibraryService.ts`](src/services/mediaLibraryService.ts) so the baked
-GPS is readable by Photos, a file manager, or a desktop over USB. The
-gallery write is best-effort — a refused permission or a full disk skips it
-without costing the worker the shot, and the two copies never interact
-afterwards. `ACCESS_MEDIA_LOCATION` is declared because Android 10+
-otherwise redacts GPS EXIF out of MediaStore reads, which would leave the
-gallery copy looking location-less.
+**A capture has one copy on the phone.** The file sits in the app's private
+folder and the app's list of captures is in the SQLite database
+([`photoQueueStorage.ts`](src/services/photoQueueStorage.ts)); nothing is
+added to the phone's gallery. A small preview (`localThumbUri`) is made right
+after the shot. When an admin deletes a photo, the dashboard leaves a
+`deletedPhotos/{id}` note and the app removes its list entry, file and preview
+on the next load or return to the foreground (see `usePhotoQueueController`).
 
 The EXIF write uses `arrayBuffer()` rather than `blob()` on upload, because
 React Native's Blob polyfill silently truncates large images on Android —
@@ -581,10 +576,10 @@ Coverage is now **15 suites / 137 tests**, up from 2 suites / 17.
 | API | `siteApi` | missing `sites/default` fails loudly rather than hanging every owner screen |
 | Service | `locationService` | `classifyActivity` thresholds are exclusive; tracking is idempotent; the precise-fix watch does not leak when a screen unmounts before the subscription resolves |
 | Service | `exifService` | N/S/E/W refs, DMS magnitude never signed, extension normalisation |
-| Service | `photoQueueStorage` | corrupt JSON returns null instead of crashing on every launch; write failures never reject |
+| Service | `photoQueueStorage` | a damaged row is skipped instead of crashing on every launch; the old AsyncStorage lists are migrated once; write failures never reject |
 | Controller | `usePhotoQueueController` | role scoping, another person's leftovers dropped, sync failure surfaced and retryable |
 | Controller | `useGeofenceController` | drift-risk boundary, local radius survives a failed backend write |
-| Controller | `usePhotoCaptureController` | geotagged (not raw) file goes to the gallery; permission asked once per screen not once per shot; a refused/failed gallery save never costs the queued photo |
+| Controller | `usePhotoCaptureController` | geotagged (not raw) file is the one kept and queued; location permission asked once per screen not once per shot; a failed preview never costs the queued photo |
 | Controller | `useAuthController` | the sign-up auth-state race (listener fires before the profile write completes) does not bounce the user to signed-out; a failed profile write signs the orphaned Auth account back out; the suppress flag is single-shot and doesn't eat a later unrelated sign-out |
 
 Still uncovered: `useCrewTrackingController`, `useLocationSharingController`,
@@ -657,11 +652,12 @@ src/
 
   services/locationService.ts     Background task, GPS watches, classification
   services/exifService.ts         Offline GPS-into-JPEG writer
-  services/mediaLibraryService.ts Saves a capture into the device gallery
+  services/photoDatabase.ts       Opens the on-phone SQLite database
+  services/remotePhotoCache.ts    Backend photo list as last fetched (offline)
   services/authService.ts         Firebase Auth wrapper
   services/pushService.ts         expo-notifications registration
-  services/permissionsService.ts  Location + gallery permission requests
-  services/photoQueueStorage.ts   Typed AsyncStorage wrapper
+  services/permissionsService.ts  Location permission requests
+  services/photoQueueStorage.ts   Each person's captures, in SQLite
 
   controllers/               Seven orchestration hooks (see §4)
   store/                     Five Zustand stores (auth, crew, site, photo, event)

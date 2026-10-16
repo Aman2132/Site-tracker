@@ -34,12 +34,6 @@ const config: ExpoConfig = {
       'ACCESS_BACKGROUND_LOCATION',
       'CAMERA',
       'FOREGROUND_SERVICE',
-      // Writing a capture into the device gallery. WRITE_EXTERNAL_STORAGE is
-      // only consulted on API <= 28; scoped storage covers it above that.
-      'WRITE_EXTERNAL_STORAGE',
-      // Without this, Android 10+ redacts GPS EXIF out of MediaStore reads,
-      // so the gallery copy would show no location.
-      'ACCESS_MEDIA_LOCATION',
     ],
   },
   plugins: [
@@ -67,8 +61,8 @@ const config: ExpoConfig = {
       'react-native-vision-camera',
       {
         cameraPermissionText: 'Site Tracker needs the camera to take geotagged site photos.',
-        enableMicrophonePermission: true,
-        microphonePermissionText: 'Site Tracker uses the microphone to record sound with site videos.',
+        // Photos only — no video, so no microphone.
+        enableMicrophonePermission: false,
         enableCodeScanner: false,
       },
     ],
@@ -101,16 +95,7 @@ const config: ExpoConfig = {
         color: '#1c4ff0',
       },
     ],
-    [
-      'expo-media-library',
-      {
-        savePhotosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
-        photosPermission: 'Site Tracker saves your geotagged site photos to your gallery.',
-        isAccessMediaLocationEnabled: true,
-        // We only save photos and videos; never read audio files.
-        granularPermissions: ['photo', 'video'],
-      },
-    ],
+    'expo-sqlite',
     [
       'expo-build-properties',
       {

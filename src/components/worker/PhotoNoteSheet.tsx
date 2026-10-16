@@ -127,7 +127,10 @@ export default function PhotoNoteSheet({
                       <Ionicons name="videocam" size={18} color={colors.textMuted} />
                     </View>
                   ) : (
-                    <Image source={{ uri: photo.uri }} style={[styles.pick, !picked && styles.pickOff]} />
+                    <Image
+                      source={{ uri: photo.localThumbUri ?? photo.uri }}
+                      style={[styles.pick, !picked && styles.pickOff]}
+                    />
                   )}
                   <View style={[styles.tick, picked && styles.tickOn]}>
                     {picked && <Ionicons name="checkmark" size={12} color={colors.white} />}

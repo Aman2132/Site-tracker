@@ -126,15 +126,9 @@ describe('formatDuration', () => {
 });
 
 describe('nextFlash', () => {
-  it('cycles off, auto, on, off for photos', () => {
-    expect(nextFlash('off', 'photo')).toBe('auto');
-    expect(nextFlash('auto', 'photo')).toBe('on');
-    expect(nextFlash('on', 'photo')).toBe('off');
-  });
-
-  it('only toggles off/on for video, which has no auto torch', () => {
-    expect(nextFlash('off', 'video')).toBe('on');
-    expect(nextFlash('on', 'video')).toBe('off');
-    expect(nextFlash('auto', 'video')).toBe('on');
+  it('cycles off, auto, on, off', () => {
+    expect(nextFlash('off')).toBe('auto');
+    expect(nextFlash('auto')).toBe('on');
+    expect(nextFlash('on')).toBe('off');
   });
 });
