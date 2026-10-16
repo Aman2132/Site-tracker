@@ -44,8 +44,14 @@ the thumbnail first.
 - 💾 **Dashboards keep a saved copy of Firestore data in the browser**, so a
   deleted photo can still show for a moment on a computer that already loaded
   it, until it syncs.
-- 📱 **A worker's phone may still hold the local copy** (the app's `captures`
-  folder and the gallery album). Deleting from the server does not remove that.
+- 📱 **A worker's phone holds the local copy** (the app's `captures` folder, its
+  saved preview, and a SQLite row). Since 2026-10-16 the app no longer saves to
+  the gallery. Deleting from the dashboard also writes a note,
+  `deletedPhotos/{photoId}` (who took it + when), which the phone reads on start
+  and when it returns to the foreground to remove its own copy. The note is
+  written after the files and before the record, so deploy the `deletedPhotos`
+  rules **before** the dashboard — otherwise a delete removes the files, fails
+  on the note, and leaves the record to retry.
 
 ## ✅ Checklist for when I build it
 
@@ -55,6 +61,7 @@ the thumbnail first.
 - [ ] Server / Worker deletes the **Firestore record**
 - [ ] Order: file(s) first, record last; a failed file delete keeps the record
 - [ ] Any scheduled "delete old photos" job does the same steps
+- [x] Phones remove their own copy (list entry, file, preview) via `deletedPhotos` notes (2026-10-16)
 - [ ] Tested: no broken images left, no orphan files left in the bucket
 
 ---

@@ -46,7 +46,7 @@ export default function CaptureTray({
                 <Ionicons name="videocam" size={18} color={colors.white} />
               </View>
             ) : (
-              <Image source={{ uri: photo.uri }} style={styles.thumb} />
+              <Image source={{ uri: photo.localThumbUri ?? photo.uri }} style={styles.thumb} />
             )}
             {(photo.note || photo.inventoryId) && (
               <View style={styles.badge}>

@@ -8,8 +8,8 @@ import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureControll
 import { pinchZoom, touchDistance } from '@/utils/camera';
 
 /**
- * The one hook CameraScreen reads: the live session (lens, zoom, mode, retries)
- * plus capture (photo / video), and the pinch-to-zoom touch handlers that tie
+ * The one hook CameraScreen reads: the live session (lens, zoom, retries)
+ * plus photo capture, and the pinch-to-zoom touch handlers that tie
  * them together.
  */
 export function useCameraController(task: string) {
@@ -17,7 +17,7 @@ export function useCameraController(task: string) {
   const session = useCameraSessionController();
   const capture = usePhotoCaptureController();
 
-  const { zoom, zoomRange, setZoom, mode, supportsFocus, flash } = session;
+  const { zoom, zoomRange, setZoom, supportsFocus, flash } = session;
   const pinch = useRef<{ startZoom: number; startDistance: number } | null>(null);
   /** Latest pinch zoom not yet applied, and the frame that will apply it. */
   const pendingZoom = useRef<number | null>(null);
@@ -109,14 +109,10 @@ export function useCameraController(task: string) {
     [supportsFocus]
   );
 
-  /** The shutter does the right thing for the current mode. */
   const onShutter = useCallback(() => {
     const camera = cameraRef.current;
-    if (!camera) return;
-    if (mode === 'photo') capture.capturePhoto(camera, task, flash);
-    else if (capture.isRecording) capture.stopVideo();
-    else capture.startVideo(camera, task);
-  }, [mode, capture, task, flash]);
+    if (camera) capture.capturePhoto(camera, task, flash);
+  }, [capture, task, flash]);
 
   return {
     cameraRef,

@@ -1,15 +1,13 @@
 import { useIsFocused } from '@react-navigation/native';
 import { act, renderHook } from '@testing-library/react-native';
 import { AppState } from 'react-native';
-import { useCameraDevice, useCameraFormat, useMicrophonePermission } from 'react-native-vision-camera';
+import { useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
 
 import { useCameraSessionController } from '@/controllers/useCameraSessionController';
 
 jest.mock('@/constants/config', () => ({
   CAMERA: {
     photoTarget: { width: 4032, height: 3024 },
-    videoTarget: { width: 1920, height: 1080 },
-    videoFps: 30,
     maxVideoSeconds: 30,
     maxZoom: 10,
     maxAutoRetries: 3,
@@ -20,13 +18,11 @@ jest.mock('@react-navigation/native', () => ({ useIsFocused: jest.fn() }));
 jest.mock('react-native-vision-camera', () => ({
   useCameraDevice: jest.fn(),
   useCameraFormat: jest.fn(),
-  useMicrophonePermission: jest.fn(),
 }));
 
 const device = { id: 'back-1', minZoom: 1, maxZoom: 8, neutralZoom: 1 };
 const inUse = { code: 'device/camera-already-in-use', message: 'The given Camera Device is already in use!' };
 const restricted = { code: 'system/camera-is-restricted', message: 'restricted' };
-const requestPermission = jest.fn();
 
 let appStateListener: (state: string) => void = () => {};
 
@@ -40,7 +36,6 @@ beforeEach(() => {
   (useCameraDevice as jest.Mock).mockReturnValue(device);
   (useCameraFormat as jest.Mock).mockReturnValue({ id: 'format-1' });
   (useIsFocused as jest.Mock).mockReturnValue(true);
-  (useMicrophonePermission as jest.Mock).mockReturnValue({ hasPermission: false, requestPermission });
   Object.defineProperty(AppState, 'currentState', { value: 'active', configurable: true });
   jest.spyOn(AppState, 'addEventListener').mockImplementation((_type, listener) => {
     appStateListener = listener as (state: string) => void;
@@ -259,64 +254,17 @@ describe('zoom', () => {
   });
 });
 
-describe('photo vs video', () => {
-  it('asks for the ~12 MP photo format in photo mode', () => {
+describe('photo format', () => {
+  it('asks for the ~12 MP photo format', () => {
     mount();
 
     const filters = (useCameraFormat as jest.Mock).mock.calls[0][1];
     expect(filters).toContainEqual({ photoResolution: { width: 4032, height: 3024 } });
   });
-
-  it('asks for 1080p at 30 fps in video mode', () => {
-    const { result } = mount();
-
-    act(() => result.current.setMode('video'));
-
-    const filters = (useCameraFormat as jest.Mock).mock.calls.at(-1)?.[1];
-    expect(filters).toContainEqual({ videoResolution: { width: 1920, height: 1080 } });
-    expect(filters).toContainEqual({ fps: 30 });
-  });
-
-  it('asks for the microphone only when video is chosen', () => {
-    const { result } = mount();
-    expect(requestPermission).not.toHaveBeenCalled();
-
-    act(() => result.current.setMode('video'));
-
-    expect(requestPermission).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not re-ask once the microphone is granted', () => {
-    (useMicrophonePermission as jest.Mock).mockReturnValue({ hasPermission: true, requestPermission });
-    const { result } = mount();
-
-    act(() => result.current.setMode('video'));
-
-    expect(requestPermission).not.toHaveBeenCalled();
-  });
-
-  it('records sound only in video mode with the microphone granted', () => {
-    (useMicrophonePermission as jest.Mock).mockReturnValue({ hasPermission: true, requestPermission });
-    const { result } = mount();
-    expect(result.current.audioEnabled).toBe(false);
-
-    act(() => result.current.setMode('video'));
-
-    expect(result.current.audioEnabled).toBe(true);
-  });
-
-  it('records silent video rather than failing when the microphone is refused', () => {
-    const { result } = mount();
-
-    act(() => result.current.setMode('video'));
-
-    expect(result.current.mode).toBe('video');
-    expect(result.current.audioEnabled).toBe(false);
-  });
 });
 
 describe('flash', () => {
-  const withFlash = { ...device, hasFlash: true, hasTorch: true };
+  const withFlash = { ...device, hasFlash: true };
 
   it('is hidden on a lens without a flash, and never sent to it', () => {
     const { result } = mount();
@@ -327,7 +275,7 @@ describe('flash', () => {
     expect(result.current.flash).toBe('off');
   });
 
-  it('cycles off, auto, on for photos, with the torch staying off', () => {
+  it('cycles off, auto, on', () => {
     (useCameraDevice as jest.Mock).mockReturnValue(withFlash);
     const { result } = mount();
 
@@ -335,19 +283,8 @@ describe('flash', () => {
     expect(result.current.flash).toBe('auto');
     act(() => result.current.cycleFlash());
     expect(result.current.flash).toBe('on');
-    expect(result.current.torch).toBe('off');
-  });
-
-  it('turns into a torch in video mode, dropping auto', () => {
-    (useCameraDevice as jest.Mock).mockReturnValue(withFlash);
-    const { result } = mount();
     act(() => result.current.cycleFlash());
-
-    act(() => result.current.setMode('video'));
     expect(result.current.flash).toBe('off');
-
-    act(() => result.current.cycleFlash());
-    expect(result.current.torch).toBe('on');
   });
 });
 

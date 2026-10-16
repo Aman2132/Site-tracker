@@ -60,4 +60,23 @@ describe('usePhotoStore', () => {
     usePhotoStore.getState().setSyncStatus('a', null);
     expect(usePhotoStore.getState().syncStatus).toEqual({});
   });
+
+  it('removes the named photos and keeps the rest', () => {
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'a' });
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'b' });
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'c' });
+
+    usePhotoStore.getState().removePhotos(['a', 'c']);
+
+    expect(usePhotoStore.getState().photos.map(p => p.id)).toEqual(['b']);
+  });
+
+  it('attaches saved previews to the photos they belong to, leaving others alone', () => {
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'a' });
+    usePhotoStore.getState().addPhoto({ ...capture, id: 'b' });
+
+    usePhotoStore.getState().setLocalThumbs({ a: 'file:///t/a.jpg' });
+
+    expect(usePhotoStore.getState().photos.map(p => p.localThumbUri)).toEqual([undefined, 'file:///t/a.jpg']);
+  });
 });

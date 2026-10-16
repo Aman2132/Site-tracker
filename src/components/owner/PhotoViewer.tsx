@@ -46,7 +46,17 @@ export default function PhotoViewer({
             </TouchableOpacity>
           </View>
         ) : (
-          <ZoomableImage uri={photo.uri} />
+          <>
+            {/* The saved preview shows at once, and stays if the full photo can't load (offline). */}
+            {(photo.localThumbUri ?? photo.thumbUrl) && (
+              <Image
+                source={{ uri: photo.localThumbUri ?? photo.thumbUrl }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="contain"
+              />
+            )}
+            <ZoomableImage uri={photo.uri} />
+          </>
         )}
 
         <TouchableOpacity

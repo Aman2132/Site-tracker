@@ -6,10 +6,12 @@ import {
   captureFileName,
   countBySite,
   displaySize,
+  isLocalPhotoId,
   mergeById,
   mergePhotoLists,
   newLocalPhotoId,
-  photoFromCaptureFileName,
+  splitDeleted,
+  thumbFileName,
 } from '@/utils/photos';
 
 function photo(overrides: Partial<Photo>): Photo {
@@ -36,56 +38,73 @@ describe('newLocalPhotoId', () => {
 });
 
 describe('capture file names', () => {
-  it('round-trips everything the Photos list needs', () => {
-    const original = photo({});
-    const name = captureFileName(original);
-
-    const recovered = photoFromCaptureFileName({ filename: name, uri: 'file:///gallery/x.jpg' });
-
-    expect(recovered).toEqual({
-      ...original,
-      uri: 'file:///gallery/x.jpg',
-      plusCode: expect.any(String),
-    });
-  });
-
-  it('round-trips a video with its duration', () => {
-    const name = captureFileName(photo({ mediaType: 'video', durationMs: 12_000 }));
-    expect(name.endsWith('.mp4')).toBe(true);
-
-    const recovered = photoFromCaptureFileName({
-      filename: name,
-      uri: 'file:///g/v.mp4',
-      durationMs: 12_000,
-    });
-
-    expect(recovered?.mediaType).toBe('video');
-    expect(recovered?.durationMs).toBe(12_000);
-  });
-
-  it('handles southern/western coordinates and ids containing underscores', () => {
-    const original = photo({ lat: -33.8688, lng: -151.2093, personId: 'dev_worker_1' });
-
-    const recovered = photoFromCaptureFileName({ filename: captureFileName(original), uri: 'u' });
-
-    expect(recovered).toMatchObject({ lat: -33.8688, lng: -151.2093, personId: 'dev_worker_1' });
+  it('puts the person, time, place and task in the name', () => {
+    expect(captureFileName(photo({}))).toBe(
+      'ST_zNR7yZ1UFjaW75NlMuSr2dYP3d82_1700000000000_abc123_27.717245_85.323961_6.4_Column grid L4.jpg'
+    );
   });
 
   it('strips characters a file name cannot hold from the task', () => {
     const name = captureFileName(photo({ task: 'Slab/L4: "east"_bay?' }));
 
-    expect(name).not.toMatch(/[\\/:*?"<>|]/);
-    expect(photoFromCaptureFileName({ filename: name, uri: 'u' })?.task).toBe('Slab L4 east bay');
+    expect(name).not.toMatch(/[\/:*?"<>|]/);
+    expect(name.endsWith('_Slab L4 east bay.jpg')).toBe(true);
   });
 
   it('keeps a task in a non-Latin script', () => {
-    const name = captureFileName(photo({ task: 'स्तम्भ ढलान' }));
+    expect(captureFileName(photo({ task: 'स्तम्भ ढलान' }))).toContain('_स्तम्भ ढलान.jpg');
+  });
+});
 
-    expect(photoFromCaptureFileName({ filename: name, uri: 'u' })?.task).toBe('स्तम्भ ढलान');
+describe('thumbFileName', () => {
+  it('puts _thumb before the extension', () => {
+    expect(thumbFileName('ST_a_1_x_1_2_3_Task.jpg')).toBe('ST_a_1_x_1_2_3_Task_thumb.jpg');
+  });
+});
+
+describe('isLocalPhotoId', () => {
+  it('tells a capture made on this phone from a backend record id', () => {
+    expect(isLocalPhotoId(newLocalPhotoId(5))).toBe(true);
+    expect(isLocalPhotoId('9fK3LmQ2xYvB7aPd')).toBe(false);
+  });
+});
+
+describe('splitDeleted', () => {
+  const note = (overrides = {}) => ({
+    id: 'rec-1',
+    personId: 'zNR7yZ1UFjaW75NlMuSr2dYP3d82',
+    takenAt: 1_700_000_000_000,
+    ...overrides,
   });
 
-  it('ignores files it did not name', () => {
-    expect(photoFromCaptureFileName({ filename: 'IMG_20260925_101500.jpg', uri: 'u' })).toBeNull();
+  it('finds a phone copy by who took it and when, since the uploaded record has a different id', () => {
+    const mine = photo({ synced: true });
+
+    expect(splitDeleted([mine], [note()])).toEqual({ keep: [], gone: [mine] });
+  });
+
+  it('finds a backend-only photo by its record id', () => {
+    const theirs = photo({ id: 'rec-1', personId: 'someone-else', takenAt: 7, synced: true });
+
+    expect(splitDeleted([theirs], [note()]).gone).toEqual([theirs]);
+  });
+
+  it('never deletes a capture that has not synced', () => {
+    const unsent = photo({ synced: false });
+
+    expect(splitDeleted([unsent], [note()])).toEqual({ keep: [unsent], gone: [] });
+  });
+
+  it('keeps photos by the same person at a different time', () => {
+    const other = photo({ synced: true, takenAt: 1_700_000_000_001 });
+
+    expect(splitDeleted([other], [note()]).keep).toEqual([other]);
+  });
+
+  it('returns the same list when nothing was deleted', () => {
+    const list = [photo({ synced: true })];
+
+    expect(splitDeleted(list, [])).toEqual({ keep: list, gone: [] });
   });
 });
 

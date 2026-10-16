@@ -1,7 +1,5 @@
 /** Pure camera helpers: zoom maths, flash cycling and timer formatting. No React, no hardware. */
 
-import { CaptureMode } from '@/types/domain';
-
 export interface ZoomRange {
   min: number;
   max: number;
@@ -85,8 +83,7 @@ export function formatDuration(ms: number): string {
 
 export type FlashMode = 'off' | 'auto' | 'on';
 
-/** Flash button: photo cycles off → auto → on; video (a torch) only has off ↔ on. */
-export function nextFlash(current: FlashMode, mode: CaptureMode): FlashMode {
-  if (mode === 'video') return current === 'on' ? 'off' : 'on';
+/** Flash button: cycles off → auto → on. */
+export function nextFlash(current: FlashMode): FlashMode {
   return current === 'off' ? 'auto' : current === 'auto' ? 'on' : 'off';
 }

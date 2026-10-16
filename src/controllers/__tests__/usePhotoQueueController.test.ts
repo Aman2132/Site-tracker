@@ -1,32 +1,45 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { fetchDeletedPhotos } from '@/api/deletedPhotosApi';
 import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
-import { listGalleryCaptures } from '@/services/mediaLibraryService';
-import { requestGallerySavePermission } from '@/services/permissionsService';
-import { loadLocalPhotos, markLocalPhotosSynced, saveLocalPhotos } from '@/services/photoQueueStorage';
+import { deleteLocalFiles } from '@/services/localMediaService';
+import { deleteLocalPhotos, loadLocalPhotos, markLocalPhotosSynced } from '@/services/photoQueueStorage';
+import {
+  deleteCachedRemotePhotos,
+  loadCachedRemotePhotos,
+  replaceCachedRemotePhotos,
+  setCachedRemoteThumbs,
+} from '@/services/remotePhotoCache';
+import { downloadThumbnail } from '@/services/thumbnailCacheService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { PersonProfile, Photo } from '@/types/domain';
-import { captureFileName } from '@/utils/photos';
 
 jest.mock('@/constants/config', () => ({
   HAS_FIREBASE_CONFIG: true,
   LOCAL_MEDIA: { maxTaskChars: 60 },
   AUTO_SYNC: { graceMs: 1000, retryMs: 5000 },
+  THUMBNAIL_CACHE: { maxFiles: 10 },
 }));
 jest.mock('@/api/photosApi', () => ({ fetchPhotos: jest.fn(async () => []), uploadPhotos: jest.fn() }));
+jest.mock('@/api/deletedPhotosApi', () => ({ fetchDeletedPhotos: jest.fn(async () => []) }));
 jest.mock('@/api/eventsApi', () => ({ logEvent: jest.fn(async () => undefined) }));
 jest.mock('@/services/photoQueueStorage', () => ({
   loadLocalPhotos: jest.fn(async () => []),
-  saveLocalPhotos: jest.fn(async () => undefined),
   markLocalPhotosSynced: jest.fn(async () => undefined),
+  deleteLocalPhotos: jest.fn(async () => undefined),
 }));
-jest.mock('@/services/mediaLibraryService', () => ({ listGalleryCaptures: jest.fn(async () => []) }));
-jest.mock('@/services/permissionsService', () => ({
-  requestGallerySavePermission: jest.fn(async () => true),
+jest.mock('@/services/remotePhotoCache', () => ({
+  loadCachedRemotePhotos: jest.fn(async () => []),
+  replaceCachedRemotePhotos: jest.fn(async () => []),
+  setCachedRemoteThumbs: jest.fn(async () => undefined),
+  deleteCachedRemotePhotos: jest.fn(async () => undefined),
 }));
+jest.mock('@/services/localMediaService', () => ({ deleteLocalFiles: jest.fn(() => 0) }));
+jest.mock('@/services/thumbnailCacheService', () => ({ downloadThumbnail: jest.fn(async () => null) }));
+jest.mock('@/services/thumbnailService', () => ({ createThumbnail: jest.fn(async () => null) }));
 
 const owner: PersonProfile = {
   id: 'owner-1',
@@ -66,9 +79,11 @@ const shownIds = () => usePhotoStore.getState().photos.map(p => p.id);
 function resetMocks() {
   jest.clearAllMocks();
   (loadLocalPhotos as jest.Mock).mockResolvedValue([]);
-  (listGalleryCaptures as jest.Mock).mockResolvedValue([]);
-  (requestGallerySavePermission as jest.Mock).mockResolvedValue(true);
+  (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([]);
+  (replaceCachedRemotePhotos as jest.Mock).mockResolvedValue([]);
   (fetchPhotos as jest.Mock).mockResolvedValue([]);
+  (fetchDeletedPhotos as jest.Mock).mockResolvedValue([]);
+  (downloadThumbnail as jest.Mock).mockResolvedValue(null);
 }
 
 describe('usePhotoQueueController loading', () => {
@@ -135,11 +150,11 @@ describe('usePhotoQueueController loading', () => {
     useAuthStore.setState({ profile: worker });
     renderHook(() => usePhotoQueueController());
 
-    act(() => usePhotoStore.getState().addPhoto(queuedPhoto({ id: 'just-shot', takenAt: 9 })));
+    act(() => usePhotoStore.getState().addPhoto(queuedPhoto({ id: 'local-9-shot', takenAt: 9 })));
     await act(async () => finishLoad([queuedPhoto({ id: 'earlier', takenAt: 1 })]));
 
     await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(shownIds()).toEqual(['just-shot', 'earlier']);
+    expect(shownIds()).toEqual(['local-9-shot', 'earlier']);
   });
 
   it('reloads when a different person signs in on the same device', async () => {
@@ -154,78 +169,166 @@ describe('usePhotoQueueController loading', () => {
     expect(loadLocalPhotos).toHaveBeenCalledWith('worker-2');
   });
 
-  it("never writes one person's list while another is signed in", async () => {
-    // The old bug: every change to the on-screen list was saved over the one
-    // shared list, so the admin's (empty) list erased the worker's.
+  it("never touches another person's saved list while loading", async () => {
     useAuthStore.setState({ profile: owner });
     renderHook(() => usePhotoQueueController());
 
     await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(saveLocalPhotos).not.toHaveBeenCalled();
+    expect(deleteLocalPhotos).not.toHaveBeenCalled();
   });
 });
 
-describe('usePhotoQueueController gallery recovery', () => {
+function remotePhoto(overrides: Partial<Photo>): Photo {
+  return queuedPhoto({
+    id: 'remote-1',
+    uri: 'https://x.supabase.co/storage/v1/object/public/Photos/worker-1/a.jpg',
+    thumbUrl: 'https://x.supabase.co/storage/v1/object/public/Photos/worker-1/a_thumb.jpg',
+    synced: true,
+    ...overrides,
+  });
+}
+
+describe('usePhotoQueueController offline cache', () => {
+  beforeEach(() => {
+    resetMocks();
+    usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null });
+    useAuthStore.setState({ profile: owner });
+  });
+
+  it("shows the last backend list when the phone is offline", async () => {
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([remotePhoto({ id: 'theirs', personId: 'worker-9' })]);
+    (fetchPhotos as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    renderHook(() => usePhotoQueueController());
+
+    await waitFor(() => expect(shownIds()).toEqual(['theirs']));
+    // A failed fetch must not wipe what was cached.
+    expect(replaceCachedRemotePhotos).not.toHaveBeenCalled();
+  });
+
+  it('replaces the cached list with a successful fetch, and removes previews no longer needed', async () => {
+    const fresh = remotePhoto({ id: 'fresh', personId: 'worker-9', takenAt: 5 });
+    (fetchPhotos as jest.Mock).mockResolvedValue([fresh]);
+    (replaceCachedRemotePhotos as jest.Mock).mockResolvedValue(['file:///docs/thumbnail-cache/old.jpg']);
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValueOnce([]).mockResolvedValue([fresh]);
+
+    renderHook(() => usePhotoQueueController());
+
+    await waitFor(() => expect(replaceCachedRemotePhotos).toHaveBeenCalledWith('owner-1', [fresh]));
+    expect(deleteLocalFiles).toHaveBeenCalledWith(['file:///docs/thumbnail-cache/old.jpg']);
+    await waitFor(() => expect(shownIds()).toEqual(['fresh']));
+  });
+
+  it('downloads previews for other people\'s photos, and saves where they went', async () => {
+    const theirs = remotePhoto({ id: 'theirs', personId: 'worker-9', takenAt: 5 });
+    (fetchPhotos as jest.Mock).mockResolvedValue([theirs]);
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([theirs]);
+    (downloadThumbnail as jest.Mock).mockResolvedValue('file:///docs/thumbnail-cache/theirs.jpg');
+
+    renderHook(() => usePhotoQueueController());
+
+    await waitFor(() =>
+      expect(setCachedRemoteThumbs).toHaveBeenCalledWith('owner-1', {
+        theirs: 'file:///docs/thumbnail-cache/theirs.jpg',
+      })
+    );
+    expect(downloadThumbnail).toHaveBeenCalledWith('theirs', theirs.thumbUrl);
+    await waitFor(() =>
+      expect(usePhotoStore.getState().photos[0].localThumbUri).toBe('file:///docs/thumbnail-cache/theirs.jpg')
+    );
+  });
+
+  it('does not download a preview for a photo already on this phone', async () => {
+    const mine = queuedPhoto({ id: 'local-1-q1', personId: 'owner-1', takenAt: 3, synced: true });
+    const uploaded = remotePhoto({ id: 'remote-mine', personId: 'owner-1', takenAt: 3 });
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([mine]);
+    (fetchPhotos as jest.Mock).mockResolvedValue([uploaded]);
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([uploaded]);
+
+    renderHook(() => usePhotoQueueController());
+
+    await waitFor(() => expect(replaceCachedRemotePhotos).toHaveBeenCalled());
+    await waitFor(() => expect(shownIds()).toEqual(['local-1-q1']));
+    expect(downloadThumbnail).not.toHaveBeenCalled();
+  });
+});
+
+describe('usePhotoQueueController admin deletions', () => {
   beforeEach(() => {
     resetMocks();
     usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null });
     useAuthStore.setState({ profile: worker });
   });
 
-  const galleryFile = (photo: Photo) => ({
-    filename: captureFileName(photo),
-    uri: `file:///Pictures/${photo.id}`,
+  const note = (overrides: Partial<{ id: string; personId: string; takenAt: number }> = {}) => ({
+    id: 'remote-1',
+    personId: 'worker-1',
+    takenAt: 5,
+    ...overrides,
   });
 
-  it('rebuilds the list from the gallery album after a reinstall, and saves it', async () => {
-    const lost = queuedPhoto({ id: 'local-5-abc', takenAt: 5, task: 'Slab pour' });
-    (listGalleryCaptures as jest.Mock).mockResolvedValue([galleryFile(lost)]);
+  it('removes a synced capture the admin deleted: list, saved row and files', async () => {
+    const gone = queuedPhoto({
+      id: 'local-5-abc',
+      takenAt: 5,
+      synced: true,
+      uri: 'file:///docs/captures/worker-1/a.jpg',
+      localThumbUri: 'file:///docs/captures/worker-1/a_thumb.jpg',
+    });
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([gone, queuedPhoto({ id: 'other', takenAt: 9, synced: true })]);
+    (fetchDeletedPhotos as jest.Mock).mockResolvedValue([note()]);
 
     renderHook(() => usePhotoQueueController());
 
-    await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(usePhotoStore.getState().photos[0]).toMatchObject({
-      id: 'local-5-abc',
-      task: 'Slab pour',
-      uri: 'file:///Pictures/local-5-abc',
-    });
-    expect(saveLocalPhotos).toHaveBeenCalledWith('worker-1', [
-      expect.objectContaining({ id: 'local-5-abc' }),
+    await waitFor(() => expect(shownIds()).toEqual(['other']));
+    expect(deleteLocalPhotos).toHaveBeenCalledWith('worker-1', ['local-5-abc']);
+    expect(deleteLocalFiles).toHaveBeenCalledWith([
+      'file:///docs/captures/worker-1/a.jpg',
+      'file:///docs/captures/worker-1/a_thumb.jpg',
     ]);
   });
 
-  it("does not recover another person's captures from the album", async () => {
-    const theirs = queuedPhoto({ id: 'local-5-abc', personId: 'worker-2' });
-    (listGalleryCaptures as jest.Mock).mockResolvedValue([galleryFile(theirs)]);
+  it('never removes a capture that has not synced, even if a note matches its time', async () => {
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([queuedPhoto({ id: 'unsent', takenAt: 5, synced: false })]);
+    (fetchDeletedPhotos as jest.Mock).mockResolvedValue([note()]);
 
     renderHook(() => usePhotoQueueController());
 
     await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(shownIds()).toEqual([]);
-    expect(saveLocalPhotos).not.toHaveBeenCalled();
+    await waitFor(() => expect(fetchDeletedPhotos).toHaveBeenCalled());
+    expect(shownIds()).toEqual(['unsent']);
+    expect(deleteLocalPhotos).not.toHaveBeenCalled();
+    expect(deleteLocalFiles).not.toHaveBeenCalled();
   });
 
-  it('does not duplicate captures the saved list already has', async () => {
-    const kept = queuedPhoto({ id: 'local-5-abc', takenAt: 5 });
-    (loadLocalPhotos as jest.Mock).mockResolvedValue([kept]);
-    (listGalleryCaptures as jest.Mock).mockResolvedValue([galleryFile(kept)]);
+  it('keeps everything when the deletion check fails (offline)', async () => {
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([queuedPhoto({ id: 'kept', takenAt: 5, synced: true })]);
+    (fetchDeletedPhotos as jest.Mock).mockRejectedValue(new Error('offline'));
 
     renderHook(() => usePhotoQueueController());
 
+    await waitFor(() => expect(fetchDeletedPhotos).toHaveBeenCalled());
     await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(usePhotoStore.getState().photos).toEqual([kept]);
-    expect(saveLocalPhotos).not.toHaveBeenCalled();
+    expect(shownIds()).toEqual(['kept']);
+    expect(deleteLocalPhotos).not.toHaveBeenCalled();
   });
 
-  it('skips the gallery without access, and still shows the saved list', async () => {
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(false);
-    (loadLocalPhotos as jest.Mock).mockResolvedValue([queuedPhoto({ id: 'mine' })]);
+  it('drops a deleted photo from the cached backend list and its saved preview', async () => {
+    const cached = remotePhoto({
+      id: 'remote-1',
+      takenAt: 5,
+      personId: 'worker-1',
+      localThumbUri: 'file:///docs/thumbnail-cache/remote-1.jpg',
+    });
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([cached]);
+    (fetchPhotos as jest.Mock).mockRejectedValue(new Error('offline'));
+    (fetchDeletedPhotos as jest.Mock).mockResolvedValue([note()]);
 
     renderHook(() => usePhotoQueueController());
 
-    await waitFor(() => expect(usePhotoStore.getState().loaded).toBe(true));
-    expect(listGalleryCaptures).not.toHaveBeenCalled();
-    expect(shownIds()).toEqual(['mine']);
+    await waitFor(() => expect(shownIds()).toEqual([]));
+    expect(deleteCachedRemotePhotos).toHaveBeenCalledWith('worker-1', ['remote-1']);
+    expect(deleteLocalFiles).toHaveBeenCalledWith([cached.uri, 'file:///docs/thumbnail-cache/remote-1.jpg']);
   });
 });
 

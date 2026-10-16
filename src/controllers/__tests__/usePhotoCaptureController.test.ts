@@ -4,12 +4,9 @@ import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureControll
 import { writeGeotag } from '@/services/exifService';
 import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
-import { saveToDeviceGallery } from '@/services/mediaLibraryService';
-import {
-  requestForegroundLocationPermission,
-  requestGallerySavePermission,
-} from '@/services/permissionsService';
-import { addLocalPhoto } from '@/services/photoQueueStorage';
+import { requestForegroundLocationPermission } from '@/services/permissionsService';
+import { addLocalPhoto, setLocalPhotoThumb } from '@/services/photoQueueStorage';
+import { createThumbnail } from '@/services/thumbnailService';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { useShiftStore } from '@/store/useShiftStore';
@@ -27,11 +24,13 @@ jest.mock('@/services/localMediaService', () => ({
   // Pass-through by default: the file stays where it is.
   keepCaptureFile: jest.fn(async (uri: string) => uri),
 }));
-jest.mock('@/services/photoQueueStorage', () => ({ addLocalPhoto: jest.fn(async () => undefined) }));
+jest.mock('@/services/photoQueueStorage', () => ({
+  addLocalPhoto: jest.fn(async () => undefined),
+  setLocalPhotoThumb: jest.fn(async () => undefined),
+}));
+jest.mock('@/services/thumbnailService', () => ({ createThumbnail: jest.fn(async () => null) }));
 jest.mock('@/services/locationService', () => ({ watchPreciseFix: jest.fn(() => jest.fn()) }));
-jest.mock('@/services/mediaLibraryService', () => ({ saveToDeviceGallery: jest.fn(async () => undefined) }));
 jest.mock('@/services/permissionsService', () => ({
-  requestGallerySavePermission: jest.fn(async () => true),
   requestForegroundLocationPermission: jest.fn(async () => true),
 }));
 
@@ -52,67 +51,68 @@ function primeFix(fix: GeoFix) {
   });
 }
 
-describe('usePhotoCaptureController gallery copy', () => {
+describe('usePhotoCaptureController geotagged file', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null });
     useAuthStore.setState({
       profile: { id: 'worker-1', name: 'Ramesh', role: 'Driver', appRole: 'worker', color: '#1a73e8' },
     });
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(true);
     primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
   });
 
-  it('saves the geotagged copy, not the raw camera file', async () => {
+  it('keeps the geotagged copy, not the raw camera file', async () => {
     const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
 
     await act(() => result.current.capturePhoto(camera, 'Column grid L4'));
 
     expect(writeGeotag).toHaveBeenCalledWith('file:///tmp/shot.jpg', { lat: 27.7, lng: 85.3 });
-    expect(saveToDeviceGallery).toHaveBeenCalledWith('file:///tmp/shot.jpg-geo');
-  });
-
-  it('queues the same geotagged file it put in the gallery', async () => {
-    const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
-
-    await act(() => result.current.capturePhoto(camera, 'Column grid L4'));
-
     expect(usePhotoStore.getState().photos[0].uri).toBe('file:///tmp/shot.jpg-geo');
   });
 
-  it('skips the gallery entirely when permission was refused', async () => {
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(false);
+  it('asks for location once when the camera opens', async () => {
+    renderHook(() => usePhotoCaptureController());
 
-    const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
-    await act(() => result.current.capturePhoto(camera, 'Task'));
+    await waitFor(() => expect(requestForegroundLocationPermission).toHaveBeenCalledTimes(1));
+  });
+});
 
-    expect(saveToDeviceGallery).not.toHaveBeenCalled();
-    // The capture still reaches the app's own queue — that's the copy that syncs.
-    expect(usePhotoStore.getState().photos).toHaveLength(1);
+describe('usePhotoCaptureController preview', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    usePhotoStore.setState({ photos: [], loaded: false, loadedFor: null });
+    useAuthStore.setState({
+      profile: { id: 'worker-1', name: 'Ramesh', role: 'Driver', appRole: 'worker', color: '#1a73e8' },
+    });
+    (keepCaptureFile as jest.Mock).mockImplementation(
+      async (_uri: string, personId: string, fileName: string) =>
+        `file:///docs/captures/${personId}/${fileName}`
+    );
+    (createThumbnail as jest.Mock).mockResolvedValue('file:///cache/small.jpg');
+    primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
   });
 
-  it('still keeps the photo when the gallery write fails', async () => {
-    (saveToDeviceGallery as jest.Mock).mockRejectedValue(new Error('storage full'));
-
+  it('saves a small preview next to the photo and records it, after the shot is already safe', async () => {
     const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
+
+    await act(() => result.current.capturePhoto(camera, 'Task'));
+
+    await waitFor(() => expect(setLocalPhotoThumb).toHaveBeenCalledTimes(1));
+    const photo = usePhotoStore.getState().photos[0];
+    expect(photo.localThumbUri).toMatch(/^file:\/\/\/docs\/captures\/worker-1\/ST_.*_Task_thumb\.jpg$/);
+    expect(setLocalPhotoThumb).toHaveBeenCalledWith('worker-1', photo.id, photo.localThumbUri);
+    // The saved list got the capture first, without waiting for the preview.
+    expect((addLocalPhoto as jest.Mock).mock.calls[0][0]).not.toHaveProperty('localThumbUri');
+  });
+
+  it('keeps the photo with no preview when one cannot be made', async () => {
+    (createThumbnail as jest.Mock).mockResolvedValue(null);
+    const { result } = renderHook(() => usePhotoCaptureController());
+
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
     expect(usePhotoStore.getState().photos).toHaveLength(1);
-  });
-
-  it('asks for gallery permission once per screen, not once per shot', async () => {
-    const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
-
-    await act(() => result.current.capturePhoto(camera, 'Task'));
-    await act(() => result.current.capturePhoto(camera, 'Task'));
-
-    expect(requestGallerySavePermission).toHaveBeenCalledTimes(1);
-    expect(saveToDeviceGallery).toHaveBeenCalledTimes(2);
+    expect(setLocalPhotoThumb).not.toHaveBeenCalled();
   });
 });
 
@@ -123,7 +123,6 @@ describe('usePhotoCaptureController local save', () => {
     useAuthStore.setState({
       profile: { id: 'worker-1', name: 'Ramesh', role: 'Driver', appRole: 'worker', color: '#1a73e8' },
     });
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(true);
     (keepCaptureFile as jest.Mock).mockImplementation(
       async (_uri: string, personId: string, fileName: string) =>
         `file:///docs/captures/${personId}/${fileName}`
@@ -145,7 +144,6 @@ describe('usePhotoCaptureController local save', () => {
 
   it('moves the file out of the cache and uses the permanent copy everywhere', async () => {
     const { result } = renderHook(() => usePhotoCaptureController());
-    await waitFor(() => expect(requestGallerySavePermission).toHaveBeenCalled());
 
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
@@ -157,7 +155,6 @@ describe('usePhotoCaptureController local save', () => {
     const kept = `file:///docs/captures/worker-1/${fileName}`;
     expect((addLocalPhoto as jest.Mock).mock.calls[0][0].uri).toBe(kept);
     expect(usePhotoStore.getState().photos[0].uri).toBe(kept);
-    expect(saveToDeviceGallery).toHaveBeenCalledWith(kept);
   });
 
   it('keeps the cache file rather than losing the shot when the move fails', async () => {
@@ -178,7 +175,6 @@ describe('usePhotoCaptureController geotag source', () => {
     useAuthStore.setState({
       profile: { id: 'worker-1', name: 'Ramesh', role: 'Driver', appRole: 'worker', color: '#1a73e8' },
     });
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(true);
   });
 
   it('flags a poor fix as imprecise', async () => {
@@ -218,7 +214,6 @@ describe('usePhotoCaptureController geotag source', () => {
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
     expect(usePhotoStore.getState().photos).toHaveLength(0);
-    expect(saveToDeviceGallery).not.toHaveBeenCalled();
   });
 });
 
@@ -261,7 +256,6 @@ describe('usePhotoCaptureController for owners', () => {
     useAuthStore.setState({
       profile: { id: 'owner-1', name: 'Administrator', role: 'Owner', appRole: 'owner', color: '#1c4ff0' },
     });
-    (requestGallerySavePermission as jest.Mock).mockResolvedValue(true);
     primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
   });
 
@@ -273,22 +267,5 @@ describe('usePhotoCaptureController for owners', () => {
     expect(addLocalPhoto).toHaveBeenCalledWith(
       expect.objectContaining({ personId: 'owner-1', task: 'Site walk' })
     );
-  });
-
-  it('asks for location when the camera opens, before gallery access', async () => {
-    // Owners have no Home tab, so this may be the first time they're asked.
-    const order: string[] = [];
-    (requestForegroundLocationPermission as jest.Mock).mockImplementation(async () => {
-      order.push('location');
-      return true;
-    });
-    (requestGallerySavePermission as jest.Mock).mockImplementation(async () => {
-      order.push('gallery');
-      return true;
-    });
-
-    renderHook(() => usePhotoCaptureController());
-
-    await waitFor(() => expect(order).toEqual(['location', 'gallery']));
   });
 });

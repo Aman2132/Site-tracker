@@ -30,7 +30,7 @@ export default function LastCaptureThumb({
           <Ionicons name="videocam" size={18} color={colors.white} />
         </View>
       ) : (
-        <Image source={{ uri: photo.uri }} style={styles.thumb} />
+        <Image source={{ uri: photo.localThumbUri ?? photo.uri }} style={styles.thumb} />
       )}
     </TouchableOpacity>
   );

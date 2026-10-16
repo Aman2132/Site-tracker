@@ -1,15 +1,9 @@
 import { useIsFocused } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import {
-  CameraRuntimeError,
-  useCameraDevice,
-  useCameraFormat,
-  useMicrophonePermission,
-} from 'react-native-vision-camera';
+import { CameraRuntimeError, useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
 
 import { CAMERA } from '@/constants/config';
-import { CaptureMode } from '@/types/domain';
 import { FlashMode, clampZoom, nextFlash, zoomStops } from '@/utils/camera';
 
 /** "Someone else has the camera right now" — usually gone a moment later, so worth retrying quietly. */
@@ -31,13 +25,6 @@ function friendlyMessage(error: CameraRuntimeError): string {
   }
 }
 
-const STABILIZATION_PREFERENCE = ['cinematic-extended', 'cinematic', 'standard', 'auto'] as const;
-
-/** Strongest video stabilization the format offers, or undefined when it offers none. */
-function bestStabilization(modes: readonly string[] | undefined) {
-  return STABILIZATION_PREFERENCE.find(mode => modes?.includes(mode));
-}
-
 /** True while the app is in the foreground. The phone takes the camera away from an app that is not. */
 function useAppIsForeground(): boolean {
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
@@ -49,7 +36,7 @@ function useAppIsForeground(): boolean {
 }
 
 /**
- * Owns the live camera session: which lens and format, photo vs video, zoom,
+ * Owns the live camera session: which lens and format, zoom,
  * and — most importantly — WHEN the camera is allowed to be open.
  *
  * The camera used to be hard-wired on, so once the Camera tab had been visited
@@ -66,9 +53,7 @@ export function useCameraSessionController() {
   const device = position === 'front' ? (front ?? back) : (back ?? front);
   const isFocused = useIsFocused();
   const appForeground = useAppIsForeground();
-  const microphone = useMicrophonePermission();
 
-  const [mode, setModeState] = useState<CaptureMode>('photo');
   const [zoomOverride, setZoomOverride] = useState<number | null>(null);
   const [flash, setFlash] = useState<FlashMode>('off');
   /** Changing this remounts <Camera>, forcing a brand-new session. */
@@ -94,28 +79,14 @@ export function useCameraSessionController() {
   const deviceId = device?.id;
   useEffect(() => setZoomOverride(null), [deviceId]);
 
-  // Ask for the sharpest photo (~12 MP) in photo mode, and 1080p in video mode.
-  // With no format chosen the library falls back to a small default, which is
-  // what made captures look soft.
-  const formatFilters = useMemo(
-    () =>
-      mode === 'photo'
-        ? [
-            { photoResolution: CAMERA.photoTarget },
-            { photoAspectRatio: CAMERA.photoTarget.width / CAMERA.photoTarget.height },
-            // Lowest priority: take an HDR-capable format if one still matches the above.
-            { photoHdr: true },
-          ]
-        : [
-            { videoResolution: CAMERA.videoTarget },
-            { videoAspectRatio: CAMERA.videoTarget.width / CAMERA.videoTarget.height },
-            { fps: CAMERA.videoFps },
-            { videoHdr: true },
-            { videoStabilizationMode: 'cinematic' as const },
-          ],
-    [mode]
-  );
-  const format = useCameraFormat(device, formatFilters);
+  // Ask for the sharpest photo (~12 MP). With no format chosen the library
+  // falls back to a small default, which is what made captures look soft.
+  const format = useCameraFormat(device, [
+    { photoResolution: CAMERA.photoTarget },
+    { photoAspectRatio: CAMERA.photoTarget.width / CAMERA.photoTarget.height },
+    // Lowest priority: take an HDR-capable format if one still matches the above.
+    { photoHdr: true },
+  ]);
 
   const setZoom = useCallback(
     (next: number) => {
@@ -124,19 +95,8 @@ export function useCameraSessionController() {
     [zoomRange]
   );
 
-  const cycleFlash = useCallback(() => setFlash(current => nextFlash(current, mode)), [mode]);
+  const cycleFlash = useCallback(() => setFlash(current => nextFlash(current)), []);
   const flip = useCallback(() => setPosition(current => (current === 'back' ? 'front' : 'back')), []);
-
-  const setMode = useCallback(
-    (next: CaptureMode) => {
-      setModeState(next);
-      // Video's light is a torch: no "auto".
-      if (next === 'video') setFlash(current => (current === 'auto' ? 'off' : current));
-      // Only ask for the microphone when someone actually opts into video.
-      if (next === 'video' && !microphone.hasPermission) microphone.requestPermission();
-    },
-    [microphone]
-  );
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimer.current) clearTimeout(retryTimer.current);
@@ -188,28 +148,20 @@ export function useCameraSessionController() {
 
   const isActive = isFocused && appForeground && !releasing && problem === null;
   // Front lenses usually have neither; asking for one they lack is a runtime error.
-  const flashSupported = mode === 'photo' ? device?.hasFlash === true : device?.hasTorch === true;
+  const flashSupported = device?.hasFlash === true;
 
   return {
     device,
     format,
     isActive,
-    mode,
-    setMode,
-    /** Audio is recorded only in video mode, and only once the microphone permission is granted. */
     // Only switch on what the chosen lens/format actually supports — asking for
     // an unsupported feature is a runtime error, not a graceful no-op.
-    photoHdr: mode === 'photo' && format?.supportsPhotoHdr === true,
-    videoHdr: mode === 'video' && format?.supportsVideoHdr === true,
+    photoHdr: format?.supportsPhotoHdr === true,
     lowLightBoost: device?.supportsLowLightBoost === true,
-    videoStabilizationMode: mode === 'video' ? bestStabilization(format?.videoStabilizationModes) : undefined,
     supportsFocus: device?.supportsFocus === true,
-    audioEnabled: mode === 'video' && microphone.hasPermission,
     flash: flashSupported ? flash : 'off',
     flashSupported,
     cycleFlash,
-    /** Video keeps the light on while previewing and recording. */
-    torch: (mode === 'video' && flashSupported && flash === 'on' ? 'on' : 'off') as 'on' | 'off',
     canFlip: back != null && front != null,
     flip,
     zoom,

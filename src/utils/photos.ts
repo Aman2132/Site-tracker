@@ -1,6 +1,5 @@
 import { LOCAL_MEDIA } from '@/constants/config';
-import { MediaKind, Photo } from '@/types/domain';
-import { plusCodeFor } from '@/utils/geo';
+import { DeletedPhoto, Photo } from '@/types/domain';
 
 /**
  * Local capture ids carry their capture time plus a random suffix — two
@@ -53,6 +52,9 @@ export function autoSyncable(photos: Photo[], personId: string, heldIds: string[
 
 const LOCAL_ID = /^local-(\d+)-([a-z0-9]+)$/;
 
+/** True for a capture made on this phone (its id comes from newLocalPhotoId); false for a backend record's id. */
+export const isLocalPhotoId = (id: string): boolean => LOCAL_ID.test(id);
+
 /** Characters Android/iOS file systems reject, plus `_`, which separates the name's fields. */
 const UNSAFE_TASK_CHARS = /[\\/:*?"<>|_\u0000-\u001f]/g;
 
@@ -66,10 +68,8 @@ function taskForFileName(task: string): string {
 }
 
 /**
- * The file name a capture is stored and saved to the gallery under. Everything
- * needed to list it again is in the name itself, so after a reinstall the
- * Photos list can be rebuilt from the gallery album alone — without reading
- * EXIF, which Android redacts GPS from and videos don't have at all.
+ * The file name a capture is stored under in the app's private folder. The
+ * details are in the name too, which makes a stray file easy to identify:
  *
  *   ST_<personId>_<takenAt>_<suffix>_<lat>_<lng>_<accuracy>_<task>.jpg
  */
@@ -91,47 +91,13 @@ export function captureFileName(photo: Photo): string {
   );
 }
 
-const CAPTURE_FILE_NAME =
-  /^ST_(.+)_(\d+)_([a-z0-9]+)_(-?\d+(?:\.\d+)?)_(-?\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_([^_]*)\.(jpg|mp4)$/i;
-
-interface GalleryFile {
-  filename: string;
-  uri: string;
-  durationMs?: number;
-}
-
-/**
- * Turns a gallery file back into a Photo, or null if the name wasn't written
- * by captureFileName (someone else's picture that ended up in the album).
- * Recovered captures start unsynced; mergePhotoLists flips any the backend
- * already has.
- */
-export function photoFromCaptureFileName({ filename, uri, durationMs }: GalleryFile): Photo | null {
-  const match = CAPTURE_FILE_NAME.exec(filename);
-  if (!match) return null;
-  const [, personId, takenAtText, suffix, latText, lngText, accuracyText, task, ext] = match;
-  const takenAt = Number(takenAtText);
-  const lat = Number(latText);
-  const lng = Number(lngText);
-  const mediaType: MediaKind = ext.toLowerCase() === 'mp4' ? 'video' : 'photo';
-  return {
-    id: newLocalPhotoId(takenAt, suffix.toLowerCase()),
-    uri,
-    mediaType,
-    ...(mediaType === 'video' && durationMs != null ? { durationMs } : {}),
-    lat,
-    lng,
-    accuracy: Number(accuracyText),
-    plusCode: plusCodeFor({ lat, lng }),
-    takenAt,
-    personId,
-    task,
-    synced: false,
-  };
+/** The name for a capture's saved preview: the capture's own name with `_thumb` before the extension. */
+export function thumbFileName(captureFile: string): string {
+  return captureFile.replace(/(\.[a-z0-9]+)$/i, '_thumb$1');
 }
 
 /** Same capture, whichever list it came from: the backend gives uploads a new id, so match on who and when. */
-const captureKey = (photo: Photo) => `${photo.personId}|${photo.takenAt}`;
+export const captureKey = (photo: Photo) => `${photo.personId}|${photo.takenAt}`;
 
 /**
  * Adds `extra` to `base`, skipping ids `base` already has. `base` wins, so an
@@ -162,4 +128,24 @@ export function mergePhotoLists(local: Photo[], remote: Photo[]): Photo[] {
 export function sharedValue(values: (string | undefined)[]): string {
   const first = values[0] ?? '';
   return values.every(value => (value ?? '') === first) ? first : '';
+}
+
+/**
+ * Splits a photo list into what stays and what an admin deleted. A photo is
+ * deleted when a deletion note names its backend id, or the same person and
+ * capture time (a phone's own copy has a different id from the uploaded record).
+ * A capture that hasn't synced is never deleted: the backend has never had it,
+ * so no note can be about it.
+ */
+export function splitDeleted(photos: Photo[], deleted: DeletedPhoto[]): { keep: Photo[]; gone: Photo[] } {
+  if (deleted.length === 0) return { keep: photos, gone: [] };
+  const ids = new Set(deleted.map(note => note.id));
+  const keys = new Set(deleted.map(note => `${note.personId}|${note.takenAt}`));
+  const keep: Photo[] = [];
+  const gone: Photo[] = [];
+  for (const photo of photos) {
+    const isGone = photo.synced && (ids.has(photo.id) || keys.has(captureKey(photo)));
+    (isGone ? gone : keep).push(photo);
+  }
+  return { keep, gone };
 }

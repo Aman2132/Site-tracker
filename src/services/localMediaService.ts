@@ -17,3 +17,25 @@ export async function keepCaptureFile(uri: string, personId: string, fileName: s
   await file.move(new File(folder, fileName), { overwrite: true });
   return file.uri;
 }
+
+/**
+ * Deletes files from the phone for good. Only files on the phone (`file://`)
+ * are touched: a web address is skipped. A file that is already gone, or one
+ * that can't be deleted, is skipped — never throws — so one bad path can't stop
+ * the rest. Returns how many files were actually removed.
+ */
+export function deleteLocalFiles(uris: (string | undefined)[]): number {
+  let removed = 0;
+  for (const uri of new Set(uris)) {
+    if (!uri?.startsWith('file:')) continue;
+    try {
+      const file = new File(uri);
+      if (!file.exists) continue;
+      file.delete();
+      removed += 1;
+    } catch (error) {
+      console.warn('[files] could not delete', uri, '—', error);
+    }
+  }
+  return removed;
+}
