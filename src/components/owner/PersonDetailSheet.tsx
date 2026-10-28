@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import InitialsAvatar from '@/components/common/InitialsAvatar';
+import { BATTERY } from '@/constants/config';
 import { colors, fontFamily, radius, shadow, spacing, typography } from '@/constants/theme';
 import { ActivityKind, Person } from '@/types/domain';
 import { formatAccuracy, formatBatteryPercent, timeAgo } from '@/utils/formatters';
@@ -28,19 +29,32 @@ const ACTIVITY_ICON: Record<ActivityKind, IconName> = {
 interface PersonDetailSheetProps {
   person: Person;
   onClose: () => void;
+  /** Opens the last known position in the phone's maps app. Hidden for someone with no position yet. */
+  onOpenMaps?: () => void;
+  /** Extra section under the details — the Crew screen puts the owner's edit controls here. */
+  children?: ReactNode;
 }
 
 /**
- * Full field set: activity, coordinates, time since fix, accuracy, battery,
+ * Full field set: activity, time since fix, accuracy, battery, a maps link,
  * and an explicit stale/paused banner rather than presenting a last-known
  * point as if it were live.
  */
-export default function PersonDetailSheet({ person, onClose }: PersonDetailSheetProps) {
+export default function PersonDetailSheet({ person, onClose, onOpenMaps, children }: PersonDetailSheetProps) {
   const insets = useSafeAreaInsets();
   const isStale = person.kind === 'stale' || person.paused;
-  const fixAgeMs = Date.now() - person.lastFixAt;
+  // lastFixAt is 0 for someone who has never reported a position (see
+  // peopleApi.ts) — timeAgo(Date.now() - 0) would read as ~56,000 years.
+  const hasFix = person.lastFixAt > 0;
+  const updatedLabel = hasFix ? timeAgo(person.lastFixAt) : 'Never';
   const batteryIcon: IconName =
-    person.battery < 0.2 ? 'battery-dead' : person.battery < 0.6 ? 'battery-half' : 'battery-full';
+    person.battery == null
+      ? 'battery-full-outline'
+      : person.battery < BATTERY.lowLevel
+        ? 'battery-dead'
+        : person.battery < 0.6
+          ? 'battery-half'
+          : 'battery-full';
 
   return (
     <View style={[styles.sheet, shadow.xl, { paddingBottom: insets.bottom + spacing.lg }]}>
@@ -52,33 +66,55 @@ export default function PersonDetailSheet({ person, onClose }: PersonDetailSheet
       </TouchableOpacity>
 
       <View style={styles.headRow}>
-        <InitialsAvatar name={person.name} color={person.color} size={50} faded={isStale} ringed />
+        <InitialsAvatar
+          name={person.name}
+          color={person.color}
+          imageUri={person.avatar}
+          size={50}
+          faded={isStale}
+          ringed
+        />
         <View style={styles.headText}>
           <Text style={styles.name}>{person.name}</Text>
           <Text style={styles.role}>{person.role}</Text>
         </View>
       </View>
 
+      {person.active === false && (
+        <View style={[styles.banner, styles.bannerInactive]}>
+          <Ionicons name="person-remove" size={14} color={colors.dangerText} />
+          <Text style={[styles.bannerText, styles.bannerTextInactive]}>Deactivated · can't sign in</Text>
+        </View>
+      )}
+
       {isStale && (
         <View style={styles.banner}>
           <Ionicons name="warning" size={14} color={colors.warningText} />
-          <Text style={styles.bannerText}>Not live · last seen {timeAgo(fixAgeMs)}</Text>
+          <Text style={styles.bannerText}>Not live · last seen {updatedLabel}</Text>
         </View>
       )}
 
       <View style={styles.grid}>
         <Row icon={ACTIVITY_ICON[person.kind]} label="Activity" value={ACTIVITY_LABEL[person.kind]} />
-        <Row icon="time-outline" label="Updated" value={timeAgo(fixAgeMs)} />
+        <Row icon="time-outline" label="Updated" value={updatedLabel} />
         <Row icon="locate-outline" label="Accuracy" value={formatAccuracy(person.accuracy)} />
         <Row icon={batteryIcon} label="Battery" value={formatBatteryPercent(person.battery)} />
       </View>
 
-      <View style={styles.coordRow}>
-        <Ionicons name="pin-outline" size={13} color={colors.textFaint} />
-        <Text style={styles.coordText}>
-          {person.lat.toFixed(6)}, {person.lng.toFixed(6)}
-        </Text>
-      </View>
+      {hasFix && onOpenMaps && (
+        <TouchableOpacity
+          style={styles.mapsButton}
+          onPress={onOpenMaps}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${person.name}'s last position in Maps`}
+        >
+          <Ionicons name="navigate-outline" size={15} color={colors.primary} />
+          <Text style={styles.mapsText}>Open in Maps</Text>
+        </TouchableOpacity>
+      )}
+
+      {children}
     </View>
   );
 }
@@ -146,6 +182,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   bannerText: { fontFamily: fontFamily.medium, color: colors.warningText, fontSize: 12 },
+  bannerInactive: { backgroundColor: colors.dangerBg },
+  bannerTextInactive: { color: colors.dangerText },
   grid: {
     backgroundColor: colors.background,
     borderRadius: radius.md,
@@ -161,12 +199,15 @@ const styles = StyleSheet.create({
   rowIcon: { width: 22 },
   rowLabel: { fontFamily: fontFamily.regular, flex: 1, color: colors.textMuted, fontSize: 13 },
   rowValue: { fontFamily: fontFamily.bold, color: colors.text, fontSize: 13 },
-  coordRow: {
+  mapsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
     justifyContent: 'center',
-    marginTop: spacing.lg,
+    gap: spacing.xs + 2,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
   },
-  coordText: { ...typography.mono, fontSize: 11, color: colors.textFaint },
+  mapsText: { fontFamily: fontFamily.bold, fontSize: 13, color: colors.primary },
 });

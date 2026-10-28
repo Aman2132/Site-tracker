@@ -3,10 +3,18 @@ import React from 'react';
 import OwnerTabNavigator from './OwnerTabNavigator';
 import WorkerTabNavigator from './WorkerTabNavigator';
 
-import { useRoleStore } from '@/store/useRoleStore';
+import LoadingView from '@/components/common/LoadingView';
+import { useAuthSessionController } from '@/controllers/useAuthController';
+import { useGpsWarmupController } from '@/controllers/useGpsWarmupController';
+import LoginScreen from '@/screens/common/LoginScreen';
+import { hasOwnerAccess } from '@/utils/roles';
 
-/** Role decides the whole tab set. See DevRoleSwitchButton for how role changes today. */
+/** Gated by real auth: signed out -> LoginScreen, else appRole decides the tab set. */
 export default function RootNavigator() {
-  const role = useRoleStore(state => state.role);
-  return role === 'owner' ? <OwnerTabNavigator /> : <WorkerTabNavigator />;
+  const { profile, initializing } = useAuthSessionController();
+  useGpsWarmupController(!!profile);
+
+  if (initializing) return <LoadingView />;
+  if (!profile) return <LoginScreen />;
+  return hasOwnerAccess(profile.appRole) ? <OwnerTabNavigator /> : <WorkerTabNavigator />;
 }

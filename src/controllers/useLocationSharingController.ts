@@ -1,57 +1,46 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
+import { logEvent } from '@/api/eventsApi';
 import { reportPosition } from '@/api/peopleApi';
-import { CURRENT_WORKER_ID } from '@/constants/session';
-import {
-  setLocationUpdateHandler,
-  startBackgroundTracking,
-  stopBackgroundTracking,
-} from '@/services/locationService';
-import { requestLocationPermissions } from '@/services/permissionsService';
+import { BATTERY } from '@/constants/config';
+import { setLocationUpdateHandler } from '@/services/locationService';
+import { useAuthStore } from '@/store/useAuthStore';
 import { useCrewStore } from '@/store/useCrewStore';
-import { useEventStore } from '@/store/useEventStore';
-import { LocationPermissionState } from '@/types/domain';
+import { useShiftStore } from '@/store/useShiftStore';
 
 /**
- * Worker Home screen: requests permission, starts/stops the background
- * tracking task, and wires each fix into the crew store (+ reports it
- * upstream). Pause/resume is local UI state layered on top of the same task.
+ * Worker Home screen: wires each background-tracking fix into the crew store
+ * and reports it upstream (with the phone's battery level and the site the
+ * person is checked in at). Whether tracking runs at all is the shift
+ * controller's job — it starts on check-in and stops on pause or check-out.
  */
 export function useLocationSharingController() {
-  const [paused, setPaused] = useState(false);
-  const [permission, setPermission] = useState<LocationPermissionState | null>(null);
+  const workerId = useAuthStore(state => state.profile?.id);
+  const workerName = useAuthStore(state => state.profile?.name);
+  const siteId = useShiftStore(state => state.active?.siteId);
   const updatePersonPosition = useCrewStore(state => state.updatePersonPosition);
-  const addEvent = useEventStore(state => state.addEvent);
+  /** So a low battery is reported once per drop, not on every fix while it stays low. */
+  const batteryLowRef = useRef(false);
 
   useEffect(() => {
+    if (!workerId) return;
     setLocationUpdateHandler(fix => {
-      updatePersonPosition(CURRENT_WORKER_ID, fix);
-      reportPosition(CURRENT_WORKER_ID, fix).catch(() => {});
+      updatePersonPosition(workerId, fix);
+      reportPosition(workerId, fix, siteId).catch(error =>
+        console.warn('[sharing] position report failed —', error)
+      );
+
+      if (fix.battery == null) return;
+      const isLow = fix.battery <= BATTERY.lowLevel;
+      if (isLow && !batteryLowRef.current) {
+        logEvent(
+          `${workerName ?? 'A worker'}'s phone battery is low (${Math.round(fix.battery * 100)}%)`,
+          'warn',
+          { type: 'battery', personId: workerId, siteId }
+        ).catch(error => console.warn('[sharing] low-battery event failed —', error));
+      }
+      batteryLowRef.current = isLow;
     });
     return () => setLocationUpdateHandler(null);
-  }, [updatePersonPosition]);
-
-  useEffect(() => {
-    (async () => {
-      const result = await requestLocationPermissions();
-      setPermission(result);
-      if (result.granted) await startBackgroundTracking();
-    })();
-  }, []);
-
-  const togglePause = useCallback(() => {
-    setPaused(wasPaused => {
-      const nextPaused = !wasPaused;
-      if (nextPaused) {
-        stopBackgroundTracking();
-        addEvent('You paused sharing', 'warn');
-      } else {
-        startBackgroundTracking();
-        addEvent('You resumed sharing', 'info');
-      }
-      return nextPaused;
-    });
-  }, [addEvent]);
-
-  return { paused, togglePause, permission };
+  }, [workerId, workerName, siteId, updatePersonPosition]);
 }

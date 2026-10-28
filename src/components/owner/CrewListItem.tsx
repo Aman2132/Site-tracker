@@ -5,7 +5,6 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import InitialsAvatar from '@/components/common/InitialsAvatar';
 import { colors, fontFamily, radius, shadow, spacing } from '@/constants/theme';
 import { Person } from '@/types/domain';
-import { formatAccuracy } from '@/utils/formatters';
 
 const STATUS_COLOR: Record<Person['kind'], string> = {
   vehicle: colors.primary,
@@ -14,22 +13,36 @@ const STATUS_COLOR: Record<Person['kind'], string> = {
   stale: colors.stale,
 };
 
-export default function CrewListItem({ person, onPress }: { person: Person; onPress?: () => void }) {
+export default function CrewListItem({
+  person,
+  subtitle,
+  onPress,
+}: {
+  person: Person;
+  /** Status plus where/when, e.g. "On site · Tower B" (see utils/siteCrew crewSubtitle). */
+  subtitle: string;
+  onPress?: () => void;
+}) {
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, person.active === false && styles.cardInactive]}
       onPress={onPress}
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
     >
       <View>
-        <InitialsAvatar name={person.name} color={person.color} faded={person.kind === 'stale'} />
+        <InitialsAvatar
+          name={person.name}
+          color={person.color}
+          imageUri={person.avatar}
+          faded={person.kind === 'stale'}
+        />
         <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[person.kind] }]} />
       </View>
       <View style={styles.textColumn}>
         <Text style={styles.name}>{person.name}</Text>
-        <Text style={styles.meta}>
-          {person.role} · {formatAccuracy(person.accuracy)}
+        <Text style={styles.meta} numberOfLines={1}>
+          {person.role} · {subtitle}
         </Text>
       </View>
       {onPress && <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}
@@ -58,6 +71,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.surface,
   },
+  cardInactive: { opacity: 0.55 },
   textColumn: { flex: 1 },
   name: { fontFamily: fontFamily.bold, fontSize: 15, color: colors.text },
   meta: { fontFamily: fontFamily.regular, fontSize: 12, color: colors.textMuted, marginTop: 2 },

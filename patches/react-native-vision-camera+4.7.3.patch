@@ -1,0 +1,51 @@
+diff --git a/node_modules/react-native-vision-camera/android/src/main/java/com/mrousavy/camera/react/CameraDevicesManager.kt b/node_modules/react-native-vision-camera/android/src/main/java/com/mrousavy/camera/react/CameraDevicesManager.kt
+index 0386478..f017313 100644
+--- a/node_modules/react-native-vision-camera/android/src/main/java/com/mrousavy/camera/react/CameraDevicesManager.kt
++++ b/node_modules/react-native-vision-camera/android/src/main/java/com/mrousavy/camera/react/CameraDevicesManager.kt
+@@ -68,6 +68,21 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) :
+         Log.i(TAG, "Initializing ExtensionsManager...")
+         extensionsManager = ExtensionsManager.getInstanceAsync(reactContext, cameraProvider!!).await(executor)
+         Log.i(TAG, "Successfully initialized!")
++        // PATCH: tell JS the device list is ready.
++        //
++        // Upstream never does this. getConstants() runs on the line right
++        // after the native module is constructed (see CameraDevices.js),
++        // so this coroutine has had microseconds to run and cameraProvider
++        // is still null -> getDevicesJson() returns an empty array, and JS
++        // caches that empty array forever in a module-level `devices` var.
++        // The availability callback can't rescue it either: it pre-seeds
++        // `deviceIds` with every camera id that already exists, so its
++        // `if (!deviceIds.contains(cameraId))` guard is false for the
++        // phone's own cameras and no change event is ever emitted.
++        // Result: "No camera detected" on a phone that plainly has one.
++        // Emitting here is the missing edge -- it fires exactly once, when
++        // the devices genuinely become enumerable.
++        sendAvailableDevicesChangedEvent()
+       } catch (error: Throwable) {
+         Log.e(TAG, "Failed to initialize ProcessCameraProvider/ExtensionsManager! Error: ${error.message}", error)
+       }
+@@ -99,9 +114,21 @@ class CameraDevicesManager(private val reactContext: ReactApplicationContext) :
+   }
+ 
+   fun sendAvailableDevicesChangedEvent() {
+-    val eventEmitter = reactContext.getJSModule(RCTDeviceEventEmitter::class.java)
+-    val devices = getDevicesJson()
+-    eventEmitter.emit("CameraDevicesChanged", devices)
++    // PATCH: this is now also called from the init coroutine (see above),
++    // which can land before the JS bridge is up. Emitting into a dead
++    // context throws and would kill the coroutine before it ever reports
++    // the devices, so skip quietly and let initialize() cover that case.
++    if (!reactContext.hasActiveReactInstance()) {
++      Log.i(TAG, "Skipping CameraDevicesChanged event - React instance is not ready yet.")
++      return
++    }
++    try {
++      val eventEmitter = reactContext.getJSModule(RCTDeviceEventEmitter::class.java)
++      val devices = getDevicesJson()
++      eventEmitter.emit("CameraDevicesChanged", devices)
++    } catch (error: Throwable) {
++      Log.e(TAG, "Failed to emit CameraDevicesChanged event! Error: ${error.message}", error)
++    }
+   }
+ 
+   override fun getConstants(): MutableMap<String, Any?> {

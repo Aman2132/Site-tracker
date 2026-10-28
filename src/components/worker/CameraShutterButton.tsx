@@ -4,21 +4,36 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 
 import { colors, glow, gradients } from '@/constants/theme';
 
-export default function CameraShutterButton({ onPress }: { onPress: () => void }) {
+/** The capture button: a white disc, like a phone's own camera app. The parent positions it. */
+export default function CameraShutterButton({
+  onPress,
+  disabled = false,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <View style={styles.row}>
-      <LinearGradient colors={gradients.worker} style={[styles.glowRing, glow(colors.worker, 0.6)]}>
-        <TouchableOpacity style={styles.ring} onPress={onPress} activeOpacity={0.7}>
-          <View style={styles.inner} />
-        </TouchableOpacity>
-      </LinearGradient>
-    </View>
+    <LinearGradient
+      colors={gradients.worker}
+      style={[styles.glowRing, glow(colors.worker, 0.6), disabled && styles.disabled]}
+    >
+      <TouchableOpacity
+        style={styles.ring}
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Take photo"
+      >
+        <View style={styles.inner} />
+      </TouchableOpacity>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { position: 'absolute', bottom: 44, left: 0, right: 0, alignItems: 'center' },
   glowRing: { width: 82, height: 82, borderRadius: 41, alignItems: 'center', justifyContent: 'center' },
+  disabled: { opacity: 0.5 },
   ring: {
     width: 74,
     height: 74,
