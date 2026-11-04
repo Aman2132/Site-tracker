@@ -12,3 +12,9 @@ ios/
 serviceAccountKey*.json
 scripts/*.json
 !scripts/package.json
+
+# Graphify (ignore cache, temp and html viewer, keep markdown report and graph data)
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/graph.json
+
