@@ -5,6 +5,7 @@ import { GEOTAG_ACCURACY } from '@/constants/config';
 import { writeGeotag } from '@/services/exifService';
 import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
+import { watchCompassHeading } from '@/services/motionService';
 import { addLocalPhoto, setLocalPhotoThumb } from '@/services/photoQueueStorage';
 import { requestForegroundLocationPermission } from '@/services/permissionsService';
 import { createThumbnail } from '@/services/thumbnailService';
@@ -82,6 +83,7 @@ export function usePhotoCaptureController() {
   const [isSaving, setIsSaving] = useState(false);
 
   const liveFixRef = useRef<GeoFix | null>(null);
+  const liveHeadingRef = useRef<number | null>(null);
   /** A 12 MP photo is ~5 MB of base64 in JS memory; two at once is a real memory spike, so one at a time. */
   const savingRef = useRef(false);
 
@@ -92,6 +94,12 @@ export function usePhotoCaptureController() {
       // while the photo was saved with ±50 m. Rounding to whole metres keeps
       // re-renders to when the number actually changes.
       setDisplayAccuracy(Math.round(fix.accuracy));
+    });
+  }, []);
+
+  useEffect(() => {
+    return watchCompassHeading(degrees => {
+      liveHeadingRef.current = degrees;
     });
   }, []);
 
@@ -126,6 +134,7 @@ export function usePhotoCaptureController() {
         return;
       }
       const capturedFix = liveFixRef.current;
+      const capturedHeading = liveHeadingRef.current;
       savingRef.current = true;
       setIsSaving(true);
       try {
@@ -136,10 +145,16 @@ export function usePhotoCaptureController() {
 
         // Read after the shutter, so it is the freshest fix (guarded non-null above; the watch never clears it).
         const fix = liveFixRef.current ?? capturedFix;
-        const { lat, lng, accuracy } = fix;
+        const heading = liveHeadingRef.current ?? capturedHeading;
+        const { lat, lng, accuracy, altitude } = fix;
 
         const photoUri = `file://${photo.path}`;
-        const geoTaggedUri = await writeGeotag(photoUri, { lat, lng }).catch(e => {
+        const geoTaggedUri = await writeGeotag(photoUri, {
+          lat,
+          lng,
+          ...(altitude != null ? { altitude } : {}),
+          ...(heading != null ? { heading } : {}),
+        }).catch(e => {
           console.warn(`${TAG} EXIF write failed, using untagged file — ${errText(e)}`);
           return photoUri;
         });
@@ -153,6 +168,8 @@ export function usePhotoCaptureController() {
           lat,
           lng,
           accuracy,
+          ...(altitude != null ? { altitude } : {}),
+          ...(heading != null ? { heading } : {}),
           plusCode: plusCodeFor({ lat, lng }),
           takenAt,
           personId: myId,

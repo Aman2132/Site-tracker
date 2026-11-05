@@ -4,6 +4,7 @@ import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureControll
 import { writeGeotag } from '@/services/exifService';
 import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
+import { watchCompassHeading } from '@/services/motionService';
 import { requestForegroundLocationPermission } from '@/services/permissionsService';
 import { addLocalPhoto, setLocalPhotoThumb } from '@/services/photoQueueStorage';
 import { createThumbnail } from '@/services/thumbnailService';
@@ -30,6 +31,7 @@ jest.mock('@/services/photoQueueStorage', () => ({
 }));
 jest.mock('@/services/thumbnailService', () => ({ createThumbnail: jest.fn(async () => null) }));
 jest.mock('@/services/locationService', () => ({ watchPreciseFix: jest.fn(() => jest.fn()) }));
+jest.mock('@/services/motionService', () => ({ watchCompassHeading: jest.fn(() => jest.fn()) }));
 jest.mock('@/services/permissionsService', () => ({
   requestForegroundLocationPermission: jest.fn(async () => true),
 }));
@@ -44,6 +46,13 @@ const camera = {
 } as never;
 
 /** Pushes a fix through the controller's GPS watch. */
+function primeHeading(heading: number) {
+  (watchCompassHeading as jest.Mock).mockImplementation((cb: (h: number) => void) => {
+    cb(heading);
+    return jest.fn();
+  });
+}
+
 function primeFix(fix: GeoFix) {
   (watchPreciseFix as jest.Mock).mockImplementation((cb: (f: GeoFix) => void) => {
     cb(fix);
@@ -68,6 +77,28 @@ describe('usePhotoCaptureController geotagged file', () => {
 
     expect(writeGeotag).toHaveBeenCalledWith('file:///tmp/shot.jpg', { lat: 27.7, lng: 85.3 });
     expect(usePhotoStore.getState().photos[0].uri).toBe('file:///tmp/shot.jpg-geo');
+  });
+
+  it('passes altitude and heading to writeGeotag and records them on the photo', async () => {
+    primeFix({ lat: 27.7, lng: 85.3, accuracy: 5, altitude: 1400.2 });
+    primeHeading(185.5);
+
+    const { result } = renderHook(() => usePhotoCaptureController());
+    await act(() => result.current.capturePhoto(camera, 'Task'));
+
+    expect(writeGeotag).toHaveBeenCalledWith(
+      'file:///tmp/shot.jpg',
+      expect.objectContaining({
+        lat: 27.7,
+        lng: 85.3,
+        altitude: 1400.2,
+        heading: 185.5,
+      })
+    );
+
+    const saved = usePhotoStore.getState().photos[0];
+    expect(saved.altitude).toBe(1400.2);
+    expect(saved.heading).toBe(185.5);
   });
 
   it('asks for location once when the camera opens', async () => {
@@ -164,6 +195,28 @@ describe('usePhotoCaptureController local save', () => {
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
     expect(usePhotoStore.getState().photos[0].uri).toBe('file:///tmp/shot.jpg-geo');
+  });
+
+  it('passes altitude and heading to writeGeotag and records them on the photo', async () => {
+    primeFix({ lat: 27.7, lng: 85.3, accuracy: 5, altitude: 1400.2 });
+    primeHeading(185.5);
+
+    const { result } = renderHook(() => usePhotoCaptureController());
+    await act(() => result.current.capturePhoto(camera, 'Task'));
+
+    expect(writeGeotag).toHaveBeenCalledWith(
+      'file:///tmp/shot.jpg',
+      expect.objectContaining({
+        lat: 27.7,
+        lng: 85.3,
+        altitude: 1400.2,
+        heading: 185.5,
+      })
+    );
+
+    const saved = usePhotoStore.getState().photos[0];
+    expect(saved.altitude).toBe(1400.2);
+    expect(saved.heading).toBe(185.5);
     expect(addLocalPhoto).toHaveBeenCalledTimes(1);
   });
 });

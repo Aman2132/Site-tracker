@@ -6,6 +6,7 @@ import { GeoPoint } from '@/types/domain';
 
 interface GeotagOptions extends GeoPoint {
   altitude?: number;
+  heading?: number;
   takenAt?: Date;
 }
 
@@ -44,7 +45,7 @@ function buildExifBytes(jpegData: string, gps: Record<number, unknown>): string 
  */
 export async function writeGeotag(
   uri: string,
-  { lat, lng, altitude = 0, takenAt = new Date() }: GeotagOptions
+  { lat, lng, altitude, heading, takenAt = new Date() }: GeotagOptions
 ): Promise<string> {
   const base64 = await new File(uri).base64();
   const jpegData = 'data:image/jpeg;base64,' + base64;
@@ -62,18 +63,26 @@ export async function writeGeotag(
     ];
   };
 
-  const gps = {
+  const alt = altitude ?? 0;
+  const gps: Record<number, unknown> = {
     [piexif.GPSIFD.GPSLatitudeRef]: lat >= 0 ? 'N' : 'S',
     [piexif.GPSIFD.GPSLatitude]: toDms(lat),
     [piexif.GPSIFD.GPSLongitudeRef]: lng >= 0 ? 'E' : 'W',
     [piexif.GPSIFD.GPSLongitude]: toDms(lng),
-    [piexif.GPSIFD.GPSAltitude]: [[Math.round(altitude), 1]],
+    [piexif.GPSIFD.GPSAltitudeRef]: alt < 0 ? 1 : 0,
+    [piexif.GPSIFD.GPSAltitude]: [[Math.round(Math.abs(alt) * 100), 100]],
     [piexif.GPSIFD.GPSTimeStamp]: [
       [takenAt.getUTCHours(), 1],
       [takenAt.getUTCMinutes(), 1],
       [takenAt.getUTCSeconds(), 1],
     ],
   };
+
+  if (heading != null && Number.isFinite(heading)) {
+    const normalized = ((heading % 360) + 360) % 360;
+    gps[piexif.GPSIFD.GPSImgDirectionRef] = 'T';
+    gps[piexif.GPSIFD.GPSImgDirection] = [[Math.round(normalized * 100), 100]];
+  }
 
   const exifBytes = buildExifBytes(jpegData, gps);
   const newData = piexif.insert(exifBytes, jpegData);

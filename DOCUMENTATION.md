@@ -47,7 +47,7 @@ Sites, projects and crew assignment are created in the **admin dashboard**; the 
 | Maps | `react-native-maps` (Google provider, 3D buildings, compass/tilt "motion mode" via `expo-sensors`); static schematic fallback with no key |
 | Camera | `react-native-vision-camera` 4.7.3 (photos only; microphone disabled) |
 | Location | `expo-location` + `expo-task-manager` (Android foreground service); local Kotlin native module for **activity recognition** (`modules/activity-recognition`) |
-| EXIF | `piexifjs` — GPS written into the JPEG on the phone, offline |
+| EXIF | `piexifjs` — GPS (lat/lng), true altitude and compass camera heading written into the JPEG on the phone, offline |
 | On-phone data | `expo-sqlite` (photo list), AsyncStorage (shift, inventory outbox, settings), `expo-file-system` (files) |
 | Identity | Firebase Auth (email/password) |
 | Data | Firestore (static data) + Realtime Database (live positions) — split by billing model, see §4 |
@@ -251,7 +251,7 @@ Own name and avatar (160 px JPEG stored inline as a data URI ≤150 KB on the pr
 | `Person` (map) | profile + RTDB `positions/{uid}`: `lat,lng,accuracy,lastFixAt,battery,paused,kind,siteId` |
 | `Site` | Firestore `sites/{id}`: read only (`name`, `code`) — created in the dashboard |
 | `PresenceSession` | Firestore `sessions/{id}`: `personId, siteId, start, end?, endReason` |
-| `Photo` | Firestore `photos/{id}` (metadata) + Supabase `Photos/{personId}/{photoId}.jpg` and `_thumb.jpg`; on device SQLite `photos` table (`viewer_id, id, origin, taken_at, data JSON`) |
+| `Photo` | Firestore `photos/{id}` (metadata: `lat,lng,accuracy,altitude,heading,takenAt,...`) + Supabase `Photos/{personId}/{photoId}.jpg` and `_thumb.jpg`; on device SQLite `photos` table (`viewer_id, id, origin, taken_at, data JSON`) |
 | `DeletedPhoto` | Firestore `deletedPhotos/{id}`: `personId, takenAt, deletedAt` |
 | `AppEvent` | Firestore `events/{id}`: `text, kind info|warn, type checkin|checkout|pause|resume|upload|battery|crew|site, personId, siteId, at` |
 | `InventoryEntry` | Firestore `inventory/{id}`; outbox copy in AsyncStorage |

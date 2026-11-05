@@ -28,6 +28,7 @@ export interface GeoPoint {
 
 export interface GeoFix extends GeoPoint {
   accuracy: number;
+  altitude?: number;
 }
 
 /** A background-tracking fix — adds the activity signal a one-shot GeoFix doesn't need. */
@@ -121,6 +122,7 @@ export interface Person extends PersonProfile {
   lat: number;
   lng: number;
   accuracy: number;
+  altitude?: number;
   lastFixAt: number;
   /** 0–1; undefined until the phone reports one (older app builds never do). */
   battery?: number;
@@ -148,7 +150,9 @@ export interface Photo {
   lat: number;
   lng: number;
   accuracy: number;
+  altitude?: number;
   /** Short shareable pin (e.g. "7JJVXR9R+2X") — see utils/geo.ts plusCodeFor. */
+  heading?: number;
   plusCode: string;
   takenAt: number;
   personId: string;

@@ -57,8 +57,8 @@ finish the reply with one line (short, to respect the short-reply rule), e.g.:
 
 ## Changelog (newest first)
 
-| Date | Change | Docs updated |
-|---|---|---|
-| 2026-11-04 | Added Graphify codebase knowledge graph integration (`graphify-out/GRAPH_REPORT.md`) to `AGENTS.md` and `PROJECT_CONTEXT.md`. | yes |
+| Date       | Change                                                                                                                          | Docs updated  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 2026-11-05 | Added EXIF camera heading (GPSImgDirection) and GNSS true altitude (GPSAltitude) to photo captures.                             | yes           |
+| 2026-11-04 | Added Graphify codebase knowledge graph integration (`graphify-out/GRAPH_REPORT.md`) to `AGENTS.md` and `PROJECT_CONTEXT.md`.   | yes           |
 | 2026-11-04 | Created `DOCUMENTATION.md`, `PROJECT_CONTEXT.md`, `AGENTS.md` from a full review of `origin/main` @ `c01a356`. No code changed. | yes (initial) |
-

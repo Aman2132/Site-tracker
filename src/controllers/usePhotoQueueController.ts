@@ -182,7 +182,8 @@ export function usePhotoQueueController() {
       const localKept = await dropDeleted(personId, local, deleted);
       let remote = await dropDeleted(personId, fetched ?? cached, deleted);
       if (fetched) {
-        deleteLocalFiles(await replaceCachedRemotePhotos(personId, remote));
+        const stale = await replaceCachedRemotePhotos(personId, remote);
+        if (stale.length > 0) deleteLocalFiles(stale);
         // Read back so each photo carries the preview already saved for it.
         const stored = await loadCachedRemotePhotos(personId);
         if (stored.length > 0) remote = stored;

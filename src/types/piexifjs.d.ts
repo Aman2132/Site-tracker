@@ -9,6 +9,9 @@ declare module 'piexifjs' {
     GPSLongitudeRef: number;
     GPSLongitude: number;
     GPSAltitude: number;
+    GPSAltitudeRef: number;
+    GPSImgDirection: number;
+    GPSImgDirectionRef: number;
     GPSTimeStamp: number;
   };
 

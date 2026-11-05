@@ -68,6 +68,7 @@ export async function getCurrentPosition(): Promise<GeoFix | null> {
     lat: loc.coords.latitude,
     lng: loc.coords.longitude,
     accuracy: loc.coords.accuracy ?? 9999,
+    ...(loc.coords.altitude != null ? { altitude: loc.coords.altitude } : {}),
   });
   const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(
     () => null
@@ -103,7 +104,12 @@ export function watchPreciseFix(onUpdate: (fix: GeoFix) => void): () => void {
 
   const emit = (loc: Location.LocationObject) => {
     lastUpdateAt = Date.now();
-    onUpdate({ lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? 9999 });
+    onUpdate({
+      lat: loc.coords.latitude,
+      lng: loc.coords.longitude,
+      accuracy: loc.coords.accuracy ?? 9999,
+      ...(loc.coords.altitude != null ? { altitude: loc.coords.altitude } : {}),
+    });
   };
 
   const stopSubscription = () => {

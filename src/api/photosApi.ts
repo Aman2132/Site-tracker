@@ -97,6 +97,8 @@ export async function uploadPhotos(photos: Photo[], thumbUris: Record<string, st
       lat: photo.lat,
       lng: photo.lng,
       accuracy: photo.accuracy,
+      ...(photo.altitude != null ? { altitude: photo.altitude } : {}),
+      ...(photo.heading != null ? { heading: photo.heading } : {}),
       plusCode: photo.plusCode,
       takenAt: photo.takenAt,
       personId: photo.personId,
