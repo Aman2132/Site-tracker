@@ -112,7 +112,6 @@ export function useOwnerPhotosController() {
       Number(selectedPerson !== EVERYONE),
     reset,
     openPhoto,
-    openPhotoSiteName: siteLabel(openPhoto?.siteId),
     open: setOpenId,
     close: () => setOpenId(null),
     showOnMap: () => openPhoto && openInMaps(openPhoto.lat, openPhoto.lng, openPhoto.task),

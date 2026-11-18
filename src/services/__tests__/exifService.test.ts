@@ -31,7 +31,10 @@ jest.mock('piexifjs', () => ({
       GPSLatitude: 'lat',
       GPSLongitudeRef: 'lngRef',
       GPSLongitude: 'lng',
+      GPSAltitudeRef: 'altRef',
       GPSAltitude: 'alt',
+      GPSImgDirectionRef: 'dirRef',
+      GPSImgDirection: 'dir',
       GPSTimeStamp: 'time',
     },
     ImageIFD: { Orientation: 274 },
@@ -233,5 +236,33 @@ describe('writeGeotag preserves the existing EXIF', () => {
     await writeGeotag('file:///tmp/a.jpg', { lat: 27.7, lng: 85.3 });
 
     expect((piexif.dump as jest.Mock).mock.calls[1][0]['0th']).toEqual({});
+  });
+});
+
+describe('writeGeotag altitude and heading', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('tags positive altitude with ref 0 and centimeter rational', async () => {
+    await writeGeotag('file:///tmp/a.jpg', { lat: 27.7, lng: 85.3, altitude: 1350.5 });
+    expect(dumpedGps().altRef).toBe(0);
+    expect(dumpedGps().alt).toEqual([[135050, 100]]);
+  });
+
+  it('tags negative altitude with ref 1', async () => {
+    await writeGeotag('file:///tmp/a.jpg', { lat: 27.7, lng: 85.3, altitude: -15.2 });
+    expect(dumpedGps().altRef).toBe(1);
+    expect(dumpedGps().alt).toEqual([[1520, 100]]);
+  });
+
+  it('tags camera heading with True North ref and hundredth-degree rational', async () => {
+    await writeGeotag('file:///tmp/a.jpg', { lat: 27.7, lng: 85.3, heading: 245.8 });
+    expect(dumpedGps().dirRef).toBe('T');
+    expect(dumpedGps().dir).toEqual([[24580, 100]]);
+  });
+
+  it('normalizes negative or overflow heading', async () => {
+    await writeGeotag('file:///tmp/a.jpg', { lat: 27.7, lng: 85.3, heading: -90 });
+    expect(dumpedGps().dirRef).toBe('T');
+    expect(dumpedGps().dir).toEqual([[27000, 100]]);
   });
 });

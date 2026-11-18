@@ -2,19 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Camera } from 'react-native-vision-camera';
 
 import { GEOTAG_ACCURACY } from '@/constants/config';
+import { refreshPhotoStamp } from '@/controllers/photoStampActions';
 import { writeGeotag } from '@/services/exifService';
 import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
-import { addLocalPhoto, setLocalPhotoThumb } from '@/services/photoQueueStorage';
+import { watchCompassHeading } from '@/services/motionService';
 import { requestForegroundLocationPermission } from '@/services/permissionsService';
-import { createThumbnail } from '@/services/thumbnailService';
+import { addLocalPhoto } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { useShiftStore } from '@/store/useShiftStore';
 import { GeoFix, Photo } from '@/types/domain';
 import { FlashMode } from '@/utils/camera';
 import { plusCodeFor } from '@/utils/geo';
-import { captureFileName, displaySize, newLocalPhotoId, thumbFileName } from '@/utils/photos';
+import { photoStampTime } from '@/utils/photoStamp';
+import { captureFileName, displaySize, newLocalPhotoId } from '@/utils/photos';
 
 const TAG = '[capture]';
 const errText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
@@ -32,23 +34,6 @@ async function keepFileLogged(photo: Photo): Promise<string> {
   } catch (e) {
     console.warn(`${TAG} could not move out of cache, keeping ${photo.uri} — ${errText(e)}`);
     return photo.uri;
-  }
-}
-
-/**
- * Makes the capture's small preview and keeps it next to the photo, so lists
- * show it instead of decoding the full-size file. Runs after the capture is
- * already safe and on screen; a failure just means lists use the full photo.
- */
-async function attachThumbnail(photo: Photo): Promise<void> {
-  try {
-    const small = await createThumbnail(photo.uri);
-    if (!small) return;
-    const kept = await keepCaptureFile(small, photo.personId, thumbFileName(captureFileName(photo)));
-    await setLocalPhotoThumb(photo.personId, photo.id, kept);
-    usePhotoStore.getState().setLocalThumbs({ [photo.id]: kept });
-  } catch (e) {
-    console.warn(`${TAG} could not keep a preview — ${errText(e)}`);
   }
 }
 
@@ -82,6 +67,7 @@ export function usePhotoCaptureController() {
   const [isSaving, setIsSaving] = useState(false);
 
   const liveFixRef = useRef<GeoFix | null>(null);
+  const liveHeadingRef = useRef<number | null>(null);
   /** A 12 MP photo is ~5 MB of base64 in JS memory; two at once is a real memory spike, so one at a time. */
   const savingRef = useRef(false);
 
@@ -92,6 +78,12 @@ export function usePhotoCaptureController() {
       // while the photo was saved with ±50 m. Rounding to whole metres keeps
       // re-renders to when the number actually changes.
       setDisplayAccuracy(Math.round(fix.accuracy));
+    });
+  }, []);
+
+  useEffect(() => {
+    return watchCompassHeading(degrees => {
+      liveHeadingRef.current = degrees;
     });
   }, []);
 
@@ -108,11 +100,21 @@ export function usePhotoCaptureController() {
   /** Permanent file, then the saved list, then the screen, then the preview. */
   const keepCapture = useCallback(
     async (capture: Photo) => {
-      const photo = { ...capture, uri: await keepFileLogged(capture) };
+      const uri = await keepFileLogged(capture);
+      const photo = {
+        ...capture,
+        uri,
+        localStamp: { sourceUri: uri, timeLabel: photoStampTime(capture.takenAt) },
+      };
       await addLocalPhoto(photo);
       addPhoto(photo);
       setLastCaptureId(photo.id);
-      attachThumbnail(photo);
+      try {
+        await refreshPhotoStamp(photo);
+      } catch (error) {
+        // The original is safe. Sync retries stamping and never uploads a new capture unstamped.
+        console.warn(`${TAG} stamp pending — ${errText(error)}`);
+      }
     },
     [addPhoto]
   );
@@ -126,26 +128,34 @@ export function usePhotoCaptureController() {
         return;
       }
       const capturedFix = liveFixRef.current;
+      const capturedHeading = liveHeadingRef.current;
       savingRef.current = true;
       setIsSaving(true);
       try {
         console.log(`${TAG} takePhoto: start`);
+        const takenAt = Date.now();
         const photo = await camera.takePhoto({ flash });
         if (!photo) return;
         console.log(`${TAG} takePhoto: ${photo.path} ${photo.width}x${photo.height}`);
 
         // Read after the shutter, so it is the freshest fix (guarded non-null above; the watch never clears it).
         const fix = liveFixRef.current ?? capturedFix;
-        const { lat, lng, accuracy } = fix;
+        const heading = liveHeadingRef.current ?? capturedHeading;
+        const { lat, lng, accuracy, altitude } = fix;
 
         const photoUri = `file://${photo.path}`;
-        const geoTaggedUri = await writeGeotag(photoUri, { lat, lng }).catch(e => {
+        const geoTaggedUri = await writeGeotag(photoUri, {
+          lat,
+          lng,
+          takenAt: new Date(takenAt),
+          ...(altitude != null ? { altitude } : {}),
+          ...(heading != null ? { heading } : {}),
+        }).catch(e => {
           console.warn(`${TAG} EXIF write failed, using untagged file — ${errText(e)}`);
           return photoUri;
         });
         console.log(`${TAG} geotagged file: ${geoTaggedUri}`);
 
-        const takenAt = Date.now();
         await keepCapture({
           id: newLocalPhotoId(takenAt),
           uri: geoTaggedUri,
@@ -153,6 +163,8 @@ export function usePhotoCaptureController() {
           lat,
           lng,
           accuracy,
+          ...(altitude != null ? { altitude } : {}),
+          ...(heading != null ? { heading } : {}),
           plusCode: plusCodeFor({ lat, lng }),
           takenAt,
           personId: myId,

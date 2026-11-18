@@ -1,0 +1,5 @@
+# The app's generated Android project is ignored; this module is source code.
+!android/
+!android/**
+android/.gradle/
+android/build/

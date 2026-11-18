@@ -13,6 +13,8 @@ const touch = (pageX: number, pageY = 0) => ({ pageX, pageY });
 function setup() {
   const screen = render(<ZoomableImage uri="https://x/photo.jpg" />);
   const surface = screen.UNSAFE_getByType(Image).parent!.parent!;
+  fireEvent(surface, 'layout', { nativeEvent: { layout: { width: 300, height: 300 } } });
+  fireEvent(screen.UNSAFE_getByType(Image), 'load', { nativeEvent: { source: { width: 300, height: 300 } } });
   const scale = () => {
     const transform = StyleSheet.flatten(screen.UNSAFE_getByType(Image).props.style).transform as {
       scale?: number;
@@ -81,4 +83,6 @@ it('drags only while zoomed', () => {
   expect(scale()).toBe(2.5);
   oneFinger('touchMove', 160);
   expect(translateX()).toBe(60);
+  oneFinger('touchMove', 1000);
+  expect(translateX()).toBe(225);
 });

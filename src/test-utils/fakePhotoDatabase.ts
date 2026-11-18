@@ -29,27 +29,47 @@ export function createFakePhotoDatabase() {
       await task();
     },
 
-    async runAsync(source: string, ...params: unknown[]): Promise<void> {
+    async runAsync(
+      source: string,
+      ...params: unknown[]
+    ): Promise<{ changes: number; lastInsertRowId: number }> {
       const query = squash(source);
-      if (query.startsWith('INSERT OR IGNORE INTO photos') || query.startsWith('INSERT OR REPLACE INTO photos')) {
+      let changes = 0;
+      if (
+        query.startsWith('INSERT OR IGNORE INTO photos') ||
+        query.startsWith('INSERT OR REPLACE INTO photos')
+      ) {
         const [viewer, id, takenAt, data] = params as [string, string, number, string];
         const origin = /VALUES \(\?, \?, '(\w+)'/.exec(query)?.[1] as string;
-        if (query.startsWith('INSERT OR IGNORE') && rows.has(key(viewer, id))) return;
+        if (query.startsWith('INSERT OR IGNORE') && rows.has(key(viewer, id)))
+          return { changes, lastInsertRowId: 0 };
         rows.set(key(viewer, id), { viewer_id: viewer, id, origin, taken_at: takenAt, data });
+        changes = 1;
       } else if (query.startsWith('UPDATE photos SET data = ?')) {
         const [data, viewer, id] = params as [string, string, string];
         const row = rows.get(key(viewer, id));
-        if (row && row.origin === originOf(query)) row.data = data;
+        if (row && row.origin === originOf(query)) {
+          row.data = data;
+          changes = 1;
+        }
       } else if (query.startsWith('DELETE FROM photos WHERE viewer_id = ? AND origin')) {
         const [viewer] = params as [string];
-        for (const [k, row] of rows) if (row.viewer_id === viewer && row.origin === originOf(query)) rows.delete(k);
+        for (const [k, row] of rows)
+          if (row.viewer_id === viewer && row.origin === originOf(query)) {
+            rows.delete(k);
+            changes += 1;
+          }
       } else if (query.startsWith('DELETE FROM photos WHERE viewer_id = ? AND id = ?')) {
         const [viewer, id] = params as [string, string];
         const row = rows.get(key(viewer, id));
-        if (row && row.origin === originOf(query)) rows.delete(key(viewer, id));
+        if (row && row.origin === originOf(query)) {
+          rows.delete(key(viewer, id));
+          changes = 1;
+        }
       } else {
         throw new Error(`fake database: unsupported statement: ${query}`);
       }
+      return { changes, lastInsertRowId: 0 };
     },
 
     async getAllAsync(source: string, viewer: string): Promise<{ data: string }[]> {

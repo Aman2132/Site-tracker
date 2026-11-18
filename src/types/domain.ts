@@ -28,6 +28,7 @@ export interface GeoPoint {
 
 export interface GeoFix extends GeoPoint {
   accuracy: number;
+  altitude?: number;
 }
 
 /** A background-tracking fix — adds the activity signal a one-shot GeoFix doesn't need. */
@@ -121,6 +122,7 @@ export interface Person extends PersonProfile {
   lat: number;
   lng: number;
   accuracy: number;
+  altitude?: number;
   lastFixAt: number;
   /** 0–1; undefined until the phone reports one (older app builds never do). */
   battery?: number;
@@ -148,7 +150,9 @@ export interface Photo {
   lat: number;
   lng: number;
   accuracy: number;
+  altitude?: number;
   /** Short shareable pin (e.g. "7JJVXR9R+2X") — see utils/geo.ts plusCodeFor. */
+  heading?: number;
   plusCode: string;
   takenAt: number;
   personId: string;
@@ -173,6 +177,15 @@ export interface Photo {
    * until it exists. Deleted together with the photo.
    */
   localThumbUri?: string;
+  /** Local-only opt-in for NEW captures. Never sent to Firestore; older photos stay untouched. */
+  localStamp?: {
+    /** Unstamped original, retained so edits never draw over an earlier stamp. */
+    sourceUri: string;
+    /** Capture's local date and time, frozen even if the device timezone changes later. */
+    timeLabel: string;
+    /** Undefined until the first successful render; empty string means rendered without a note. */
+    renderedNote?: string;
+  };
 }
 
 /** A note the dashboard leaves when it deletes a photo (Firestore `deletedPhotos/{id}`), so phones remove their copy. */

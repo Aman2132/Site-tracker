@@ -100,7 +100,6 @@ export default function PhotosScreen() {
       />
       <PhotoViewer
         photo={photos.openPhoto}
-        siteName={photos.openPhotoSiteName}
         onClose={photos.close}
         onOpenMaps={photos.showOnMap}
         onPlayVideo={photos.playVideo}

@@ -11,11 +11,26 @@ const NO_ZOOM = { scale: 1, x: 0, y: 0 };
  * while zoomed, and double-tapped to jump in or back out. Plain touch events,
  * the same approach as the camera's pinch — no gesture library needed.
  */
-export default function ZoomableImage({ uri }: { uri: string }) {
+export default function ZoomableImage({ uri, onLoad }: { uri: string; onLoad?: () => void }) {
   const [view, setView] = useState(NO_ZOOM);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const pinch = useRef<{ startZoom: number; startDistance: number } | null>(null);
   const pan = useRef<{ pageX: number; pageY: number; x: number; y: number } | null>(null);
   const lastTapAt = useRef(0);
+
+  const clampView = (next: typeof NO_ZOOM) => {
+    if (!viewport.width || !viewport.height || !imageSize.width || !imageSize.height)
+      return { ...next, x: 0, y: 0 };
+    const fit = Math.min(viewport.width / imageSize.width, viewport.height / imageSize.height);
+    const maxX = Math.max(0, (imageSize.width * fit * next.scale - viewport.width) / 2);
+    const maxY = Math.max(0, (imageSize.height * fit * next.scale - viewport.height) / 2);
+    return {
+      ...next,
+      x: Math.max(-maxX, Math.min(maxX, next.x)),
+      y: Math.max(-maxY, Math.min(maxY, next.y)),
+    };
+  };
 
   const onTouchStart = (event: GestureResponderEvent) => {
     const touches = event.nativeEvent.touches;
@@ -48,18 +63,19 @@ export default function ZoomableImage({ uri }: { uri: string }) {
         min: 1,
         max: PHOTO_VIEWER.maxZoom,
       });
-      setView(current => ({ ...current, scale }));
+      setView(current => clampView({ ...current, scale }));
       return;
     }
-    // ponytail: drag isn't clamped to the photo's edges; zooming back to 1× re-centres it.
     if (pan.current && view.scale > 1) {
       const { pageX, pageY } = event.nativeEvent;
       const start = pan.current;
-      setView(current => ({
-        ...current,
-        x: start.x + pageX - start.pageX,
-        y: start.y + pageY - start.pageY,
-      }));
+      setView(current =>
+        clampView({
+          ...current,
+          x: start.x + pageX - start.pageX,
+          y: start.y + pageY - start.pageY,
+        })
+      );
     }
   };
 
@@ -74,6 +90,7 @@ export default function ZoomableImage({ uri }: { uri: string }) {
   return (
     <View
       style={styles.fill}
+      onLayout={event => setViewport(event.nativeEvent.layout)}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -81,6 +98,10 @@ export default function ZoomableImage({ uri }: { uri: string }) {
     >
       <Image
         source={{ uri }}
+        onLoad={event => {
+          setImageSize(event.nativeEvent.source);
+          onLoad?.();
+        }}
         resizeMode="contain"
         style={[
           styles.fill,

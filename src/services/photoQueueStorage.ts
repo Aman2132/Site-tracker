@@ -80,7 +80,8 @@ function migrateOldLists(personId: string): Promise<void> {
       const ownKey = `${OLD_KEY_PREFIX}${personId}`;
       const own = await readOldList(ownKey);
       if (own.length > 0) await insertLocal(db, own);
-      if ((await AsyncStorage.getItem(ownKey).catch(() => null)) !== null) await AsyncStorage.removeItem(ownKey);
+      if ((await AsyncStorage.getItem(ownKey).catch(() => null)) !== null)
+        await AsyncStorage.removeItem(ownKey);
 
       const shared = await readOldList(OLD_SHARED_KEY);
       const mine = shared.filter(photo => photo.personId === personId);
@@ -176,6 +177,35 @@ export function setLocalPhotoInventory(
 /** Saves where a capture's small preview lives on the phone. Never rejects. */
 export function setLocalPhotoThumb(personId: string, id: string, localThumbUri: string): Promise<void> {
   return updateLocalPhoto(personId, id, photo => ({ ...photo, localThumbUri }));
+}
+
+/** Commit replacement image references before deleting any previous file. Reject on failure. */
+export function setLocalPhotoMedia(personId: string, id: string, media: Photo): Promise<void> {
+  return serialized(async () => {
+    const db = await getPhotoDatabase();
+    const row = await db.getFirstAsync<PhotoRow>(
+      `SELECT data FROM photos WHERE viewer_id = ? AND id = ? AND ${KEEP_ROWS}`,
+      personId,
+      id
+    );
+    const [photo] = row ? photosFromRows([row]) : [];
+    if (!photo) throw new Error('The saved capture could not be found.');
+    const next = {
+      ...photo,
+      uri: media.uri,
+      width: media.width,
+      height: media.height,
+      localThumbUri: media.localThumbUri,
+      localStamp: media.localStamp,
+    };
+    const result = await db.runAsync(
+      `UPDATE photos SET data = ? WHERE viewer_id = ? AND id = ? AND ${KEEP_ROWS}`,
+      JSON.stringify(next),
+      personId,
+      id
+    );
+    if (result.changes !== 1) throw new Error('Could not save the stamped capture.');
+  });
 }
 
 /** Marks the given captures synced in their owner's list. Never rejects. */

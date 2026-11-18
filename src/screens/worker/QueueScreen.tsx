@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -8,12 +8,14 @@ import EmptyState from '@/components/common/EmptyState';
 import FilterChips from '@/components/common/FilterChips';
 import LoadingView from '@/components/common/LoadingView';
 import ScreenContainer from '@/components/common/ScreenContainer';
+import PhotoViewer from '@/components/owner/PhotoViewer';
 import PhotoNoteSheet from '@/components/worker/PhotoNoteSheet';
 import PhotoQueueRow from '@/components/worker/PhotoQueueRow';
 import { colors, fontFamily, glow, gradients, radius, spacing, typography } from '@/constants/theme';
 import { usePhotoFilterController } from '@/controllers/usePhotoFilterController';
 import { usePhotoNoteController } from '@/controllers/usePhotoNoteController';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
+import { openInMaps, openUrl } from '@/services/linkingService';
 import { usePhotoStore } from '@/store/usePhotoStore';
 
 /** Worker "My photos" tab: their own captures, filterable by site and date, with sync. */
@@ -25,6 +27,8 @@ export default function QueueScreen() {
   const loaded = usePhotoStore(state => state.loaded);
   const insets = useSafeAreaInsets();
   const filters = usePhotoFilterController(photos);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openPhoto = photos.find(photo => photo.id === openId) ?? null;
 
   if (!loaded) return <LoadingView />;
 
@@ -87,6 +91,7 @@ export default function QueueScreen() {
             status={syncStatus[item.id]}
             onSync={() => syncOne(item.id)}
             onEditNote={() => openNote(item.id)}
+            onOpen={() => setOpenId(item.id)}
           />
         )}
         keyboardShouldPersistTaps="handled"
@@ -108,6 +113,12 @@ export default function QueueScreen() {
         items={linkable}
         onSave={saveNote}
         onClose={closeNote}
+      />
+      <PhotoViewer
+        photo={openPhoto}
+        onClose={() => setOpenId(null)}
+        onOpenMaps={() => openPhoto && openInMaps(openPhoto.lat, openPhoto.lng, openPhoto.task)}
+        onPlayVideo={() => openPhoto && openUrl(openPhoto.uri)}
       />
     </ScreenContainer>
   );

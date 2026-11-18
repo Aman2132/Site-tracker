@@ -16,9 +16,11 @@ interface PhotoQueueRowProps {
   onSync?: () => void;
   /** Open the note sheet for this photo. */
   onEditNote?: () => void;
+  /** Open the full-screen photo viewer. */
+  onOpen?: () => void;
 }
 
-export default function PhotoQueueRow({ photo, status, onSync, onEditNote }: PhotoQueueRowProps) {
+export default function PhotoQueueRow({ photo, status, onSync, onEditNote, onOpen }: PhotoQueueRowProps) {
   const uploading = status === 'syncing';
   const failed = status === 'failed';
   const isLowAccuracy = photo.accuracy > GEOTAG_ACCURACY.goodMeters;
@@ -26,7 +28,14 @@ export default function PhotoQueueRow({ photo, status, onSync, onEditNote }: Pho
   return (
     <View style={styles.card}>
       <View style={styles.row}>
-        <Image source={{ uri: photo.localThumbUri ?? photo.uri }} style={styles.thumb} />
+        <TouchableOpacity
+          onPress={onOpen}
+          disabled={!onOpen}
+          accessibilityRole="button"
+          accessibilityLabel="Open photo"
+        >
+          <Image source={{ uri: photo.localThumbUri ?? photo.uri }} style={styles.thumb} />
+        </TouchableOpacity>
         <View style={styles.textColumn}>
           <Text style={styles.title}>
             {photo.mediaType === 'video' ? `▶ ${photo.task}` : photo.task}
