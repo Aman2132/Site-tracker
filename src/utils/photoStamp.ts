@@ -14,7 +14,7 @@ export function photoStampTime(
 
 export function photoStampText(photo: Photo): string {
   return [
-    `GPS: ${photo.lat.toFixed(6)}, ${photo.lng.toFixed(6)} | Accuracy: +/-${Math.round(photo.accuracy)} m`,
+    `GPS: ${photo.lat.toFixed(6)}, ${photo.lng.toFixed(6)}`,
     `Taken: ${photo.localStamp?.timeLabel ?? photoStampTime(photo.takenAt)}`,
     `Note: ${photo.note?.trim() || 'No note'}`,
   ].join('\n');

@@ -22,13 +22,14 @@ it('handles negative offsets and crossing the date boundary', () => {
   expect(photoStampTime(Date.UTC(2026, 0, 1, 1), -300)).toBe('2025-12-31 20:00:00 -05:00');
 });
 
-it('includes signed coordinates, accuracy, multiline Unicode notes and the frozen capture time', () => {
+it('includes signed coordinates, multiline Unicode notes and the frozen capture time without accuracy', () => {
   const text = photoStampText({
     ...photo,
     note: 'Concrete inspection\nनेपाल ✓',
     localStamp: { sourceUri: photo.uri, timeLabel: 'frozen capture time' },
   });
-  expect(text).toContain('GPS: -27.717245, 85.323961 | Accuracy: +/-6 m');
+  expect(text).toContain('GPS: -27.717245, 85.323961');
+  expect(text).not.toContain('Accuracy');
   expect(text).toContain('Taken: frozen capture time');
   expect(text).toContain('Note: Concrete inspection\nनेपाल ✓');
 });

@@ -110,6 +110,16 @@ const config: ExpoConfig = {
         },
       },
     ],
+    [
+      'expo-media-library',
+      {
+        // Saving is user-initiated from the full-screen viewer. Only ask for
+        // access to images; the app never browses the device gallery.
+        photosPermission: 'Site Tracker needs access to save photos to your gallery.',
+        savePhotosPermission: 'Site Tracker needs permission to save photos to your gallery.',
+        granularPermissions: ['photo'],
+      },
+    ],
   ],
 };
 
