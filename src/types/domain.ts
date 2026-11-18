@@ -181,7 +181,7 @@ export interface Photo {
   localStamp?: {
     /** Unstamped original, retained so edits never draw over an earlier stamp. */
     sourceUri: string;
-    /** Capture time with its original UTC offset, even if the device timezone changes later. */
+    /** Capture's local date and time, frozen even if the device timezone changes later. */
     timeLabel: string;
     /** Undefined until the first successful render; empty string means rendered without a note. */
     renderedNote?: string;

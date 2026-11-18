@@ -81,7 +81,7 @@ export default function AppTabBar({
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
+  wrap: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, backgroundColor: colors.background },
   bar: {
     flexDirection: 'row',
     backgroundColor: colors.surface,

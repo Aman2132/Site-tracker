@@ -172,7 +172,7 @@ export const PHOTO_NOTE = {
 /** Burned into new captures only. Fractions scale with the full-resolution image width. */
 export const PHOTO_STAMP = {
   paddingFraction: 0.025,
-  fontFraction: 0.025,
+  fontFraction: 0.04,
   lineSpacing: 1.15,
   jpegQuality: 92,
 };
