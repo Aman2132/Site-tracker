@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { fetchDeletedPhotos } from '@/api/deletedPhotosApi';
 import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
+import { refreshPhotoStamp } from '@/controllers/photoStampActions';
 import { usePhotoQueueController } from '@/controllers/usePhotoQueueController';
 import { deleteLocalFiles } from '@/services/localMediaService';
 import { deleteLocalPhotos, loadLocalPhotos, markLocalPhotosSynced } from '@/services/photoQueueStorage';
@@ -24,6 +25,9 @@ jest.mock('@/constants/config', () => ({
   THUMBNAIL_CACHE: { maxFiles: 10 },
 }));
 jest.mock('@/api/photosApi', () => ({ fetchPhotos: jest.fn(async () => []), uploadPhotos: jest.fn() }));
+jest.mock('@/controllers/photoStampActions', () => ({
+  refreshPhotoStamp: jest.fn(async (photo: unknown) => photo),
+}));
 jest.mock('@/api/deletedPhotosApi', () => ({ fetchDeletedPhotos: jest.fn(async () => []) }));
 jest.mock('@/api/eventsApi', () => ({ logEvent: jest.fn(async () => undefined) }));
 jest.mock('@/services/photoQueueStorage', () => ({
@@ -195,8 +199,10 @@ describe('usePhotoQueueController offline cache', () => {
     useAuthStore.setState({ profile: owner });
   });
 
-  it("shows the last backend list when the phone is offline", async () => {
-    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([remotePhoto({ id: 'theirs', personId: 'worker-9' })]);
+  it('shows the last backend list when the phone is offline', async () => {
+    (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([
+      remotePhoto({ id: 'theirs', personId: 'worker-9' }),
+    ]);
     (fetchPhotos as jest.Mock).mockRejectedValue(new Error('offline'));
 
     renderHook(() => usePhotoQueueController());
@@ -219,7 +225,7 @@ describe('usePhotoQueueController offline cache', () => {
     await waitFor(() => expect(shownIds()).toEqual(['fresh']));
   });
 
-  it('downloads previews for other people\'s photos, and saves where they went', async () => {
+  it("downloads previews for other people's photos, and saves where they went", async () => {
     const theirs = remotePhoto({ id: 'theirs', personId: 'worker-9', takenAt: 5 });
     (fetchPhotos as jest.Mock).mockResolvedValue([theirs]);
     (loadCachedRemotePhotos as jest.Mock).mockResolvedValue([theirs]);
@@ -275,7 +281,10 @@ describe('usePhotoQueueController admin deletions', () => {
       uri: 'file:///docs/captures/worker-1/a.jpg',
       localThumbUri: 'file:///docs/captures/worker-1/a_thumb.jpg',
     });
-    (loadLocalPhotos as jest.Mock).mockResolvedValue([gone, queuedPhoto({ id: 'other', takenAt: 9, synced: true })]);
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([
+      gone,
+      queuedPhoto({ id: 'other', takenAt: 9, synced: true }),
+    ]);
     (fetchDeletedPhotos as jest.Mock).mockResolvedValue([note()]);
 
     renderHook(() => usePhotoQueueController());
@@ -289,7 +298,9 @@ describe('usePhotoQueueController admin deletions', () => {
   });
 
   it('never removes a capture that has not synced, even if a note matches its time', async () => {
-    (loadLocalPhotos as jest.Mock).mockResolvedValue([queuedPhoto({ id: 'unsent', takenAt: 5, synced: false })]);
+    (loadLocalPhotos as jest.Mock).mockResolvedValue([
+      queuedPhoto({ id: 'unsent', takenAt: 5, synced: false }),
+    ]);
     (fetchDeletedPhotos as jest.Mock).mockResolvedValue([note()]);
 
     renderHook(() => usePhotoQueueController());
@@ -354,6 +365,27 @@ describe('usePhotoQueueController sync', () => {
     expect(usePhotoStore.getState().photos[0].synced).toBe(false);
     expect(result.current.pendingCount).toBe(1);
     expect(markLocalPhotosSynced).not.toHaveBeenCalled();
+  });
+
+  it('never uploads a new capture when stamping fails, and retries successfully later', async () => {
+    (refreshPhotoStamp as jest.Mock).mockRejectedValueOnce(new Error('stamp failed'));
+    (uploadPhotos as jest.Mock).mockResolvedValue(undefined);
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncNow());
+    expect(uploadPhotos).not.toHaveBeenCalled();
+    expect(usePhotoStore.getState().photos[0].synced).toBe(false);
+    expect(result.current.syncError).toBeTruthy();
+    await act(() => result.current.syncNow());
+    expect(uploadPhotos).toHaveBeenCalledTimes(1);
+    expect(usePhotoStore.getState().photos[0].synced).toBe(true);
+  });
+
+  it('manual sync also waits while the note editor is open', async () => {
+    usePhotoStore.setState({ noteEditingIds: ['pending'] });
+    const { result } = renderHook(() => usePhotoQueueController());
+    await act(() => result.current.syncOne('pending'));
+    expect(refreshPhotoStamp).not.toHaveBeenCalled();
+    expect(uploadPhotos).not.toHaveBeenCalled();
   });
 
   it("marks everything synced, on screen and in the person's saved list", async () => {

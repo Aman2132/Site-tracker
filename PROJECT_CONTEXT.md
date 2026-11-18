@@ -28,7 +28,7 @@ Details: DOCUMENTATION.md §1. (`git status` also errors here: "must be run in a
 2. **Photo deletion = file + `_thumb.jpg` + Firestore record** (see `docs/READ-BEFORE-BUILDING-PHOTO-DELETION.md`). A synced photo's record is never edited, which is why notes must be added before upload.
 3. `firestore.rules` / `database.rules.json` / indexes live **here** and govern the dashboard too: a schema change is a two-repo change (update both `DOCUMENTATION.md` files) and needs a deploy.
 4. Never print, log or commit secrets (`.env`, service-account keys, the Supabase service-role key). `EXPO_PUBLIC_*` values are public by definition.
-5. `CLAUDE.md` standing instructions still apply: **never `git commit` / `git push` on the user's behalf**, keep replies short and information-only, and ask whether Memory Integrity is back on (confirm it is still relevant).
+5. `CLAUDE.md` standing instructions still apply: **never `git commit` / `git push` on the user's behalf**, keep replies short and information-only.
 
 ## Current state (2026-11-04)
 
@@ -59,6 +59,7 @@ finish the reply with one line (short, to respect the short-reply rule), e.g.:
 
 | Date       | Change                                                                                                                          | Docs updated  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 2026-11-18 | New Android captures burn notes, GPS and capture time into an image footer offline; originals retained for edits, stamped thumbnails/upload, older photos untouched. | yes |
 | 2026-11-05 | Added EXIF camera heading (GPSImgDirection) and GNSS true altitude (GPSAltitude) to photo captures.                             | yes           |
 | 2026-11-04 | Added Graphify codebase knowledge graph integration (`graphify-out/GRAPH_REPORT.md`) to `AGENTS.md` and `PROJECT_CONTEXT.md`.   | yes           |
 | 2026-11-04 | Created `DOCUMENTATION.md`, `PROJECT_CONTEXT.md`, `AGENTS.md` from a full review of `origin/main` @ `c01a356`. No code changed. | yes (initial) |

@@ -6,6 +6,7 @@ import { logEvent } from '@/api/eventsApi';
 import { fetchPhotos, uploadPhotos } from '@/api/photosApi';
 import { AUTO_SYNC, HAS_FIREBASE_CONFIG, THUMBNAIL_CACHE } from '@/constants/config';
 import { SEED_PHOTOS } from '@/constants/mockData';
+import { refreshPhotoStamp } from '@/controllers/photoStampActions';
 import { deleteLocalFiles } from '@/services/localMediaService';
 import { deleteLocalPhotos, loadLocalPhotos, markLocalPhotosSynced } from '@/services/photoQueueStorage';
 import {
@@ -57,7 +58,13 @@ async function dropDeleted(personId: string, photos: Photo[], deleted: DeletedPh
   const { keep, gone } = splitDeleted(photos, deleted);
   if (gone.length === 0) return keep;
   const ids = gone.map(photo => photo.id);
-  deleteLocalFiles(gone.flatMap(photo => [photo.uri, photo.localThumbUri]));
+  deleteLocalFiles(
+    gone.flatMap(photo =>
+      photo.localStamp
+        ? [photo.uri, photo.localThumbUri, photo.localStamp.sourceUri]
+        : [photo.uri, photo.localThumbUri]
+    )
+  );
   await deleteLocalPhotos(personId, ids);
   await deleteCachedRemotePhotos(personId, ids);
   return keep;
@@ -220,7 +227,14 @@ export function usePhotoQueueController() {
     async (candidates: Photo[]) => {
       if (!personId) return;
       const { setSyncStatus, markSynced } = usePhotoStore.getState();
-      const mine = candidates.filter(photo => !inFlight.has(photo.id));
+      const editing = usePhotoStore.getState().noteEditingIds;
+      const mine = candidates.filter(
+        photo =>
+          !photo.synced &&
+          photo.personId === personId &&
+          !inFlight.has(photo.id) &&
+          !editing.includes(photo.id)
+      );
       mine.forEach(photo => {
         inFlight.add(photo.id);
         setSyncStatus(photo.id, 'syncing');
@@ -229,7 +243,8 @@ export function usePhotoQueueController() {
       try {
         for (const queued of mine) {
           // Read again: a note may have been added since the list was built.
-          const photo = usePhotoStore.getState().photos.find(p => p.id === queued.id) ?? queued;
+          const latest = usePhotoStore.getState().photos.find(p => p.id === queued.id) ?? queued;
+          const photo = await refreshPhotoStamp(latest);
           // Without a real Firebase project there's nowhere to upload to — just
           // flip the local queue to synced, same as the rest of the static mode.
           if (HAS_FIREBASE_CONFIG) await uploadPhotos([photo], await makeThumbnails([photo]));

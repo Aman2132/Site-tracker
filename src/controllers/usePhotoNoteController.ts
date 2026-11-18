@@ -4,6 +4,7 @@ import { useSiteInventoryFeed } from './useInventoryController';
 
 import { logInventoryUsage } from '@/api/inventoryApi';
 import { INVENTORY, PHOTO_NOTE } from '@/constants/config';
+import { refreshPhotoStamp } from '@/controllers/photoStampActions';
 import { setLocalPhotoInventory, setLocalPhotoNote } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useInventoryStore } from '@/store/useInventoryStore';
@@ -38,7 +39,10 @@ export function usePhotoNoteController() {
   }, [entries, myId, editing]);
 
   const openNote = useCallback(
-    (ids: string | string[]) => setNoteEditingIds(Array.isArray(ids) ? ids : [ids]),
+    (ids: string | string[]) => {
+      const { syncStatus } = usePhotoStore.getState();
+      setNoteEditingIds((Array.isArray(ids) ? ids : [ids]).filter(id => syncStatus[id] !== 'syncing'));
+    },
     [setNoteEditingIds]
   );
   const closeNote = useCallback(() => setNoteEditingIds([]), [setNoteEditingIds]);
@@ -71,11 +75,22 @@ export function usePhotoNoteController() {
       if (problem) return problem;
     }
     for (const photo of all) {
-      if (!noteEditingIds.includes(photo.id) || photo.synced) continue;
+      if (
+        !noteEditingIds.includes(photo.id) ||
+        photo.synced ||
+        usePhotoStore.getState().syncStatus[photo.id] === 'syncing'
+      )
+        continue;
       setNote(photo.id, note);
-      setLocalPhotoNote(photo.personId, photo.id, note);
+      await setLocalPhotoNote(photo.personId, photo.id, note);
       setInventoryId(photo.id, inventoryId);
-      setLocalPhotoInventory(photo.personId, photo.id, inventoryId);
+      await setLocalPhotoInventory(photo.personId, photo.id, inventoryId);
+      try {
+        await refreshPhotoStamp({ ...photo, note });
+      } catch (error) {
+        console.warn('[photos] note stamp failed —', error);
+        return 'Your note is saved. Could not stamp the photo yet; tap Save to retry.';
+      }
     }
     // Not awaited: offline, Firestore only resolves once the server has it; the sheet shouldn't hang.
     if (used != null && entry) {

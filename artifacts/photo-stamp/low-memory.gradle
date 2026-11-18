@@ -1,0 +1,12 @@
+// Verification-only build settings; no change to the app's Gradle configuration.
+gradle.beforeProject { project ->
+  ['com.android.library', 'com.android.application'].each { pluginId ->
+    project.plugins.withId(pluginId) {
+      project.android.defaultConfig.externalNativeBuild.cmake.arguments(
+        '-DCMAKE_JOB_POOLS=stamp_compile=2;stamp_link=1',
+        '-DCMAKE_JOB_POOL_COMPILE=stamp_compile',
+        '-DCMAKE_JOB_POOL_LINK=stamp_link'
+      )
+    }
+  }
+}

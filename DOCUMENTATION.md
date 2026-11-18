@@ -207,15 +207,25 @@ sequenceDiagram
     U->>C: shutter (needs a live GPS fix)
     C->>C: takePhoto, EXIF GPS written offline
     C->>F: move to permanent app storage, add SQLite row (synced=false)
-    C->>F: small preview (thumbnail) saved locally
+    C->>F: burn GPS, capture time and note into an upright JPEG footer; save stamped thumbnail
     Note over Q: ~20 s grace (time to add a note), then every 30 s and on foreground
-    Q->>S: upload original + 400px thumb to Photos/personId/id.jpg
+    Q->>S: ensure final stamp, upload stamped JPEG + 400px stamped thumb to Photos/personId/id.jpg
     Q->>D: addDoc(photos, metadata + URLs)
     Q->>D: events: "N photos uploaded" per site
 ```
 
 - Capture is **offline-first and the only copy lives in the app's private storage** (nothing goes to the gallery). Uninstall or clear-data before sync loses it.
   Id = `local-<takenAt>-<random>`; file name encodes person, time, lat/lng, accuracy, task.
+- **New photos only: visible burned-in footer** (`modules/photo-stamp`, `photoStampService`, `photoStampActions`).
+  The Android Canvas renderer appends a black footer with white GPS coordinates, accuracy, capture date/time with UTC offset,
+  and the optional note ("No note" when empty). It normalizes all EXIF orientations, wraps long/Unicode notes and retains GPS EXIF.
+  Capture time is recorded at the shutter and its local timezone offset is frozen. All processing works offline.
+  New local rows carry `localStamp` (original URI, time label, last rendered note); older photos and queued captures without it are never stamped.
+  Notes regenerate the JPEG and thumbnail from the retained original, avoiding repeated text and JPEG recompression.
+  File references are committed to SQLite before old derivatives are deleted; the original remains for recovery.
+  Upload retries an unfinished stamp and fails safely rather than sending a new photo without its stamp. Manual sync also waits for an open note editor.
+  Only the stamped JPEG and thumbnail are uploaded, through the existing URLs and Firestore fields. `localStamp` is never uploaded;
+  no Firebase rules, shared schema or dashboard changes are required. Native changes require rebuilding Android.
 - Each capture is stamped with `siteId` (current shift), `personName`, `task` label (default "General", recent labels as chips), optional **note** (≤500 chars) and optional
   link to one of the person's inventory entries (`inventoryId`).
 - **Auto-upload** (`AUTO_SYNC`: 20 s grace, 30 s retry, on foreground). Held back while that photo's note sheet is open or while it is in the camera **tray**

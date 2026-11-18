@@ -29,6 +29,7 @@ interface PhotoState {
   markSynced: (ids: string[]) => void;
   /** Photo id → file URI of its small preview saved on this phone. */
   setLocalThumbs: (thumbs: Record<string, string>) => void;
+  setPhotoMedia: (id: string, photo: Photo) => void;
   /** Empty note removes it. */
   setNote: (id: string, note: string) => void;
   /** Null unlinks. */
@@ -49,11 +50,27 @@ export const usePhotoStore = create<PhotoState>(set => ({
   trayIds: [],
   setPhotos: (photos, forPersonId) => set({ photos, loaded: true, loadedFor: forPersonId }),
   addPhoto: photo => set(state => ({ photos: [photo, ...state.photos] })),
-  removePhotos: ids =>
-    set(state => ({ photos: state.photos.filter(photo => !ids.includes(photo.id)) })),
+  removePhotos: ids => set(state => ({ photos: state.photos.filter(photo => !ids.includes(photo.id)) })),
   setLocalThumbs: thumbs =>
     set(state => ({
-      photos: state.photos.map(photo => (thumbs[photo.id] ? { ...photo, localThumbUri: thumbs[photo.id] } : photo)),
+      photos: state.photos.map(photo =>
+        thumbs[photo.id] ? { ...photo, localThumbUri: thumbs[photo.id] } : photo
+      ),
+    })),
+  setPhotoMedia: (id, media) =>
+    set(state => ({
+      photos: state.photos.map(photo =>
+        photo.id === id
+          ? {
+              ...photo,
+              uri: media.uri,
+              width: media.width,
+              height: media.height,
+              localThumbUri: media.localThumbUri,
+              localStamp: media.localStamp,
+            }
+          : photo
+      ),
     })),
   markAllSynced: () =>
     set(state => ({

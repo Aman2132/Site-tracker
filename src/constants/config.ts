@@ -169,6 +169,14 @@ export const PHOTO_NOTE = {
   maxChars: 500,
 };
 
+/** Burned into new captures only. Fractions scale with the full-resolution image width. */
+export const PHOTO_STAMP = {
+  paddingFraction: 0.025,
+  fontFraction: 0.025,
+  lineSpacing: 1.15,
+  jpegQuality: 92,
+};
+
 /** Background upload of new captures. */
 export const AUTO_SYNC = {
   /** Wait after a capture before uploading, so a note can be added first (a synced photo's record is never edited). */

@@ -177,6 +177,15 @@ export interface Photo {
    * until it exists. Deleted together with the photo.
    */
   localThumbUri?: string;
+  /** Local-only opt-in for NEW captures. Never sent to Firestore; older photos stay untouched. */
+  localStamp?: {
+    /** Unstamped original, retained so edits never draw over an earlier stamp. */
+    sourceUri: string;
+    /** Capture time with its original UTC offset, even if the device timezone changes later. */
+    timeLabel: string;
+    /** Undefined until the first successful render; empty string means rendered without a note. */
+    renderedNote?: string;
+  };
 }
 
 /** A note the dashboard leaves when it deletes a photo (Firestore `deletedPhotos/{id}`), so phones remove their copy. */

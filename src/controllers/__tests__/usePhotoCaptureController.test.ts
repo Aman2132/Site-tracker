@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { refreshPhotoStamp } from '@/controllers/photoStampActions';
 import { usePhotoCaptureController } from '@/controllers/usePhotoCaptureController';
 import { writeGeotag } from '@/services/exifService';
 import { keepCaptureFile } from '@/services/localMediaService';
 import { watchPreciseFix } from '@/services/locationService';
 import { watchCompassHeading } from '@/services/motionService';
 import { requestForegroundLocationPermission } from '@/services/permissionsService';
-import { addLocalPhoto, setLocalPhotoThumb } from '@/services/photoQueueStorage';
-import { createThumbnail } from '@/services/thumbnailService';
+import { addLocalPhoto } from '@/services/photoQueueStorage';
 import { useAuthStore } from '@/store/useAuthStore';
 import { usePhotoStore } from '@/store/usePhotoStore';
 import { useShiftStore } from '@/store/useShiftStore';
@@ -20,6 +20,9 @@ jest.mock('@/constants/config', () => ({
 }));
 jest.mock('@/services/exifService', () => ({
   writeGeotag: jest.fn(async (uri: string) => `${uri}-geo`),
+}));
+jest.mock('@/controllers/photoStampActions', () => ({
+  refreshPhotoStamp: jest.fn(async (photo: unknown) => photo),
 }));
 jest.mock('@/services/localMediaService', () => ({
   // Pass-through by default: the file stays where it is.
@@ -75,7 +78,11 @@ describe('usePhotoCaptureController geotagged file', () => {
 
     await act(() => result.current.capturePhoto(camera, 'Column grid L4'));
 
-    expect(writeGeotag).toHaveBeenCalledWith('file:///tmp/shot.jpg', { lat: 27.7, lng: 85.3 });
+    expect(writeGeotag).toHaveBeenCalledWith('file:///tmp/shot.jpg', {
+      lat: 27.7,
+      lng: 85.3,
+      takenAt: expect.any(Date),
+    });
     expect(usePhotoStore.getState().photos[0].uri).toBe('file:///tmp/shot.jpg-geo');
   });
 
@@ -119,31 +126,33 @@ describe('usePhotoCaptureController preview', () => {
       async (_uri: string, personId: string, fileName: string) =>
         `file:///docs/captures/${personId}/${fileName}`
     );
-    (createThumbnail as jest.Mock).mockResolvedValue('file:///cache/small.jpg');
     primeFix({ lat: 27.7, lng: 85.3, accuracy: 8 });
   });
 
-  it('saves a small preview next to the photo and records it, after the shot is already safe', async () => {
+  it('opts new captures into stamping only after the original is safely saved', async () => {
     const { result } = renderHook(() => usePhotoCaptureController());
 
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
-    await waitFor(() => expect(setLocalPhotoThumb).toHaveBeenCalledTimes(1));
     const photo = usePhotoStore.getState().photos[0];
-    expect(photo.localThumbUri).toMatch(/^file:\/\/\/docs\/captures\/worker-1\/ST_.*_Task_thumb\.jpg$/);
-    expect(setLocalPhotoThumb).toHaveBeenCalledWith('worker-1', photo.id, photo.localThumbUri);
-    // The saved list got the capture first, without waiting for the preview.
-    expect((addLocalPhoto as jest.Mock).mock.calls[0][0]).not.toHaveProperty('localThumbUri');
+    expect(photo.localStamp?.sourceUri).toBe(photo.uri);
+    expect(photo.localStamp?.renderedNote).toBeUndefined();
+    expect(refreshPhotoStamp).toHaveBeenCalledWith(photo);
+    expect((addLocalPhoto as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      (refreshPhotoStamp as jest.Mock).mock.invocationCallOrder[0]
+    );
+    expect((writeGeotag as jest.Mock).mock.calls.at(-1)[1].takenAt.getTime()).toBe(photo.takenAt);
   });
 
-  it('keeps the photo with no preview when one cannot be made', async () => {
-    (createThumbnail as jest.Mock).mockResolvedValue(null);
+  it('retains the original and stamping marker when rendering fails, for a later retry', async () => {
+    (refreshPhotoStamp as jest.Mock).mockRejectedValueOnce(new Error('out of memory'));
     const { result } = renderHook(() => usePhotoCaptureController());
 
     await act(() => result.current.capturePhoto(camera, 'Task'));
 
     expect(usePhotoStore.getState().photos).toHaveLength(1);
-    expect(setLocalPhotoThumb).not.toHaveBeenCalled();
+    expect(usePhotoStore.getState().photos[0].localStamp?.sourceUri).toBeTruthy();
+    expect(usePhotoStore.getState().photos[0].synced).toBe(false);
   });
 });
 

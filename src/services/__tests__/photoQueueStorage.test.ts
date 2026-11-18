@@ -8,6 +8,7 @@ import {
   setLocalPhotoInventory,
   setLocalPhotoNote,
   setLocalPhotoThumb,
+  setLocalPhotoMedia,
 } from '@/services/photoQueueStorage';
 import { createFakePhotoDatabase } from '@/test-utils/fakePhotoDatabase';
 import { Photo } from '@/types/domain';
@@ -57,6 +58,31 @@ describe('photoQueueStorage', () => {
 
   it('reads as empty on a fresh install', async () => {
     expect(await loadLocalPhotos('worker-1')).toEqual([]);
+  });
+
+  it('persists stamped media without overwriting a note saved since rendering began', async () => {
+    const original = photo({});
+    await addLocalPhoto(original);
+    await setLocalPhotoNote(original.personId, original.id, 'Final note');
+    await setLocalPhotoMedia(original.personId, original.id, {
+      ...original,
+      uri: 'file:///stamped.jpg',
+      localThumbUri: 'file:///stamped_thumb.jpg',
+      width: 120,
+      height: 200,
+      localStamp: { sourceUri: original.uri, timeLabel: 'capture time', renderedNote: 'Final note' },
+    });
+    expect((await loadLocalPhotos(original.personId))[0]).toMatchObject({
+      uri: 'file:///stamped.jpg',
+      width: 120,
+      height: 200,
+      note: 'Final note',
+      localStamp: { sourceUri: original.uri, timeLabel: 'capture time', renderedNote: 'Final note' },
+    });
+  });
+
+  it('rejects missing captures when replacing media, allowing the caller to retain the original', async () => {
+    await expect(setLocalPhotoMedia('worker-1', 'missing', photo({}))).rejects.toThrow('could not be found');
   });
 
   it('skips a row whose stored JSON is damaged rather than failing the list', async () => {
@@ -115,7 +141,9 @@ describe('photoQueueStorage', () => {
     expect((await loadLocalPhotos('worker-1'))[0].note).toBe('Pouring slab');
 
     await setLocalPhotoNote('worker-1', 'a', '');
-    expect(await loadLocalPhotos('worker-1')).toEqual([expect.not.objectContaining({ note: expect.anything() })]);
+    expect(await loadLocalPhotos('worker-1')).toEqual([
+      expect.not.objectContaining({ note: expect.anything() }),
+    ]);
   });
 
   it('links and unlinks an inventory entry', async () => {
@@ -133,7 +161,9 @@ describe('photoQueueStorage', () => {
 
     await setLocalPhotoThumb('worker-1', 'a', 'file:///docs/captures/worker-1/a_thumb.jpg');
 
-    expect((await loadLocalPhotos('worker-1'))[0].localThumbUri).toBe('file:///docs/captures/worker-1/a_thumb.jpg');
+    expect((await loadLocalPhotos('worker-1'))[0].localThumbUri).toBe(
+      'file:///docs/captures/worker-1/a_thumb.jpg'
+    );
   });
 
   it('keeps two quick changes to the same capture instead of losing one', async () => {
@@ -177,7 +207,8 @@ describe('photoQueueStorage', () => {
         }),
       }));
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const storage = require('@/services/photoQueueStorage') as typeof import('@/services/photoQueueStorage');
+      const storage =
+        require('@/services/photoQueueStorage') as typeof import('@/services/photoQueueStorage');
 
       expect(await storage.loadLocalPhotos('worker-1')).toEqual([]);
       await expect(storage.addLocalPhoto(photo({}))).resolves.toBeUndefined();
