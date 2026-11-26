@@ -51,7 +51,7 @@ Sites, projects and crew assignment are created in the **admin dashboard**; the 
 | On-phone data | `expo-sqlite` (photo list), AsyncStorage (shift, inventory outbox, settings), `expo-file-system` (files) |
 | Identity | Firebase Auth (email/password) |
 | Data | Firestore (static data) + Realtime Database (live positions) — split by billing model, see §4 |
-| Photo files | **Supabase Storage** (public bucket `Photos`) — Firebase Storage needs a billing account |
+| Photo files | **Cloudflare R2** for new uploads through the dashboard signing API. Existing Supabase URLs remain readable during rollout. |
 | Other | `expo-notifications` (token registration), `expo-battery`, `expo-image-picker`/`image-manipulator` (avatar, thumbnails), Plus Jakarta Sans, `react-native-keyboard-controller`, `open-location-code` (plus codes) |
 | Build | Android package `com.sitetracker.app`, `minSdkVersion 26`; local builds target `arm64-v8a` + `x86_64` only; EAS profiles `development`/`preview` (APK) and `production` (AAB) |
 | Tests | Jest (`jest-expo`) + Testing Library — **37 test files** |
@@ -69,22 +69,23 @@ flowchart TB
       FS[("Firestore<br/>people, sites, sessions, photos, deletedPhotos,<br/>events, inventory, pushTokens, adminAudit")]
       RT[("Realtime DB<br/>positions/uid")]
     end
-    SB[("Supabase Storage<br/>bucket Photos")]
+    R2[("Cloudflare R2<br/>photo bucket")]
     GM["Google Maps SDK"]
     ADMIN["Admin dashboard"]
     W -->|GPS fix ~15 s| RT
-    W -->|sessions, events, photo metadata, inventory| FS
-    W -->|JPEG + thumbnail| SB
+    W -->|sessions, events, inventory| FS
+    W -->|request upload URLs and confirm media| ADMIN
+    W -->|JPEG + thumbnail or legacy MP4| R2
     O -->|onSnapshot / onValue| FS
     O -->|onValue| RT
     GM --> O
     ADMIN --> FS
     ADMIN --> RT
-    ADMIN --> SB
+    ADMIN --> R2
 ```
 
 Why three stores: **Firestore bills per read/write** (fine for slow data); **RTDB bills per byte** (cheap for tiny GPS fixes every
-15 s); **Supabase** gives 1 GB of file storage with no card. A `Person` on the map is assembled on the phone by merging a
+15 s); **R2** holds the photo and video files. A `Person` on the map is assembled on the phone by merging a
 Firestore profile with an RTDB position (`peopleApi.mergePersonProfile`).
 
 ### 4.2 Layering rule (enforced by convention — `CLAUDE.md`)
@@ -93,7 +94,7 @@ Firestore profile with an RTDB position (`peopleApi.mergePersonProfile`).
 screens  → render, call ONE controller hook
 components → props in, JSX out
 controllers (use<Thing>Controller) → the only place that combines service + api + store
-api/      → Firebase / Supabase calls, no React
+api/      → Firebase / dashboard upload API / R2 calls, no React
 services/ → device/OS I/O (GPS, camera EXIF, SQLite, files, permissions), no app state
 store/    → Zustand state + simple setters, no side effects
 utils/    → pure functions
@@ -107,7 +108,7 @@ No `any` to silence the compiler; unknown third-party types go in `src/types/*.d
 
 | Folder | Contents |
 |---|---|
-| `api/` | `firebaseClient` (single app + auth/firestore/rtdb), `supabaseClient` (Storage only), `peopleApi`, `photosApi`, `sessionsApi`, `sitesApi`, `eventsApi`, `inventoryApi`, `deletedPhotosApi`, `adminAuditApi` |
+| `api/` | `firebaseClient` (single app + auth/firestore/rtdb), `peopleApi`, `photosApi` (direct R2 uploads), `sessionsApi`, `sitesApi`, `eventsApi`, `inventoryApi`, `deletedPhotosApi`, `adminAuditApi` |
 | `services/` | `locationService` (bg task + precise watch), `sharingService`, `activityRecognitionService`, `batteryService`, `exifService`, `localMediaService`, `photoDatabase`, `photoQueueStorage`, `remotePhotoCache`, `thumbnailService`, `thumbnailCacheService`, `shiftStorage`, `inventoryOutbox`, `captureTaskStorage`, `authService`, `pushService`, `permissionsService`, `avatarService`, `linkingService`, `motionService`, `appInfoService` |
 | `controllers/` | 24 hooks, see §6 |
 | `store/` | `useAuthStore`, `useCrewStore`, `usePhotoStore`, `useEventStore`, `useShiftStore`, `useInventoryStore` |
@@ -131,9 +132,16 @@ firebase deploy --only firestore:rules,firestore:indexes,database    # after ANY
 ```
 
 Environment (`EXPO_PUBLIC_*` values are **inlined into the JS bundle = public**): `EXPO_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`,
-`_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID`, `_DATABASE_URL`; `EXPO_PUBLIC_SUPABASE_URL`,
-`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` (also written into the Android manifest by
+`_PROJECT_ID`, `_MESSAGING_SENDER_ID`, `_APP_ID`, `_DATABASE_URL`; `EXPO_PUBLIC_PHOTO_UPLOAD_API_URL` (optional HTTPS
+dashboard origin, defaults to `https://site-tracker-admin-web.vercel.app`); `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` (also written into the Android manifest by
 `app.config.ts`, so changing it needs a rebuild; restrict it by package + SHA-1 in Google Cloud).
+
+To test R2 uploads through a local dashboard, set `EXPO_PUBLIC_PHOTO_UPLOAD_API_URL` in the ignored
+`.env.development.local` file and restart Metro. Use `http://127.0.0.1:3000` after running
+`adb reverse tcp:3000 tcp:3000` for a USB device, or `http://10.0.2.2:3000` for an Android Studio emulator.
+For a phone connected over Wi-Fi, use the computer's private LAN IP and the dashboard port.
+Local HTTP is allowed in debug builds only. The local server still uses the R2 and Firebase projects configured in its environment.
+
 **No Firebase config ⇒ dev bypass:** `HAS_FIREBASE_CONFIG` is false → any credentials sign in with a fabricated profile ("worker" in the
 email ⇒ worker, else owner), data comes from `mockData.ts`, check-in uses a `local` session. It disappears once a `projectId` is set.
 
@@ -202,15 +210,20 @@ sequenceDiagram
     participant C as usePhotoCaptureController
     participant F as Files + SQLite
     participant Q as usePhotoQueueController
-    participant S as Supabase
+    participant V as Dashboard upload API
+    participant S as Cloudflare R2
     participant D as Firestore
     U->>C: shutter (needs a live GPS fix)
     C->>C: takePhoto, EXIF GPS written offline
     C->>F: move to permanent app storage, add SQLite row (synced=false)
     C->>F: burn GPS, capture time and note into an upright JPEG footer; save stamped thumbnail
     Note over Q: ~20 s grace (time to add a note), then every 30 s and on foreground
-    Q->>S: ensure final stamp, upload stamped JPEG + 400px stamped thumb to Photos/personId/id.jpg
-    Q->>D: addDoc(photos, metadata + URLs)
+    Q->>V: prepare temporary upload URLs with Firebase ID token
+    Q->>S: PUT stamped JPEG and 400px thumbnail, or legacy MP4
+    Q->>V: complete upload with capture metadata
+    V->>S: verify authorized objects
+    V->>D: create one photos record with stable URLs
+    V-->>Q: completed; mark capture synced
     Q->>D: events: "N photos uploaded" per site
 ```
 
@@ -224,13 +237,12 @@ sequenceDiagram
   Notes regenerate the JPEG and thumbnail from the retained original, avoiding repeated text and JPEG recompression.
   File references are committed to SQLite before old derivatives are deleted; the original remains for recovery.
   Upload retries an unfinished stamp and fails safely rather than sending a new photo without its stamp. Manual sync also waits for an open note editor.
-  Only the stamped JPEG and thumbnail are uploaded, through the existing URLs and Firestore fields. `localStamp` is never uploaded;
-  no Firebase rules, shared schema or dashboard changes are required. Native changes require rebuilding Android.
+  Only the stamped JPEG and thumbnail are uploaded. The client sends the rendered note as the upload revision, so retrying after a change can use fresh object keys. The local stamp source URI and time label stay on the phone.
 - Each capture is stamped with `siteId` (current shift), `personName`, `task` label (default "General", recent labels as chips), optional **note** (≤500 chars) and optional
   link to one of the person's inventory entries (`inventoryId`).
 - **Auto-upload** (`AUTO_SYNC`: 20 s grace, 30 s retry, on foreground). Held back while that photo's note sheet is open or while it is in the camera **tray**
   (this camera visit's captures) — because **a synced photo's Firestore record is never edited**, notes must go up with it. Upload one at a time; each is marked synced as soon as it lands;
-  the first failure is flagged `failed`, others return to queued; a module-level `inFlight` set prevents double sends. Uses `arrayBuffer()` not `blob()` (RN's Blob truncates large files).
+  the first failure is flagged `failed`, others return to queued; a module-level `inFlight` set prevents double sends. Expo's native upload task streams files from disk. The API checks for prior completion and uses a stable Firestore record ID for each capture.
 - **Offline lists:** the screen shows SQLite immediately (own captures + the last backend list, `origin` = `local`/`remote`), then refreshes from the network. Other people's thumbnails are cached (max 120).
 - **Admin deletion:** the dashboard writes `deletedPhotos/{id}` tombstones; the phone reads its own on load and on returning to foreground and removes the row, file and preview (only for already-synced photos).
 - Role scoping: owner fetches all recent photos, worker only `where personId == uid` (rules reject an unfiltered worker query). The photo store records `loadedFor` so a second person on the same handset never inherits the first's list.
@@ -261,7 +273,7 @@ Own name and avatar (160 px JPEG stored inline as a data URI ≤150 KB on the pr
 | `Person` (map) | profile + RTDB `positions/{uid}`: `lat,lng,accuracy,lastFixAt,battery,paused,kind,siteId` |
 | `Site` | Firestore `sites/{id}`: read only (`name`, `code`) — created in the dashboard |
 | `PresenceSession` | Firestore `sessions/{id}`: `personId, siteId, start, end?, endReason` |
-| `Photo` | Firestore `photos/{id}` (metadata: `lat,lng,accuracy,altitude,heading,takenAt,...`) + Supabase `Photos/{personId}/{photoId}.jpg` and `_thumb.jpg`; on device SQLite `photos` table (`viewer_id, id, origin, taken_at, data JSON`) |
+| `Photo` | Firestore `photos/{id}` stores capture metadata and URLs for originals and optional thumbnails in R2 or legacy Supabase. The phone keeps its SQLite `photos` table (`viewer_id, id, origin, taken_at, data JSON`). |
 | `DeletedPhoto` | Firestore `deletedPhotos/{id}`: `personId, takenAt, deletedAt` |
 | `AppEvent` | Firestore `events/{id}`: `text, kind info|warn, type checkin|checkout|pause|resume|upload|battery|crew|site, personId, siteId, at` |
 | `InventoryEntry` | Firestore `inventory/{id}`; outbox copy in AsyncStorage |
@@ -286,8 +298,7 @@ Own name and avatar (160 px JPEG stored inline as a data URI ≤150 KB on the pr
 | `pushTokens` | owner | own doc |
 | **RTDB `positions`** | signed-in | own `positions/{uid}` only; `siteId` indexed |
 
-**Supabase** bucket is **public with a publishable key shipped in the app**: any key holder can list/read/overwrite any person's files; the `{personId}/` prefix is organisation, not security.
-The dashboard deletes with the service-role key, server-side only.
+The dashboard issues R2 upload URLs only after verifying the caller's Firebase ID token and active profile. Storage credentials live with the dashboard API. R2 delivery URLs are public with the current bucket setup. Prior app builds can still upload to Supabase during the transition.
 
 ## 9. Testing
 
@@ -310,7 +321,7 @@ Screens and most components have no tests. The 2026-10-09 E2E report is `docs/te
 | `people` owner-only fields (`siteIds,email,phone,team,invitedAt,active,role`) | reads | writes |
 | `sessions` | writes (check-in/out/pause/resume) | reads, corrects, estimates ends of dead sessions |
 | `positions/{uid}.siteId` | writes while checked in | reads; clears on site delete |
-| `photos` fields (`uri,thumbUrl,width,height,siteId,personId,personName,task,note,inventoryId,mediaType`) | writes | reads, deletes (file + thumb + record) |
+| `photos` fields (`uri,thumbUrl,width,height,siteId,personId,personName,task,note,inventoryId,mediaType`) | reads and submits capture metadata | upload API verifies R2 files and writes metadata; dashboard reads and deletes the file, thumbnail and record |
 | `deletedPhotos` | reads + removes local copy | writes tombstone |
 | `events` shape | writes | reads, appends |
 | `inventory` | creates, usage | edits, deletes |
@@ -322,7 +333,7 @@ Screens and most components have no tests. The 2026-10-09 E2E report is `docs/te
 - Auto-sync only runs while the app process is alive and signed in; captures on a phone that is uninstalled/cleared before sync are lost.
 - Zoomable image drag isn't clamped to the photo edge.
 - Push notifications are registered but **nothing sends them** (needs a server trigger, i.e. Blaze plan).
-- Supabase bucket has no per-user isolation (decision pending: Edge Function verifying Firebase token vs back to Firebase Storage vs Cloudflare R2).
+- The current R2 bucket serves media through public URLs. Keep Supabase readable for older records until the rollout reconciliation is complete.
 - No arrival/leave geofence events (the Sites/geofence tab was removed; sites have no location).
 - A failed profile write at signup leaves an inert Auth account (remove in console).
 

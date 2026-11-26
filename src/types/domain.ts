@@ -169,7 +169,7 @@ export interface Photo {
   /** Pixel size of the original, for the dashboard's gallery layout. Absent on older captures. */
   width?: number;
   height?: number;
-  /** Small preview in Supabase. Absent for videos and older uploads. */
+  /** Public URL of the small preview. Absent for videos and some older uploads. */
   thumbUrl?: string;
   /**
    * Small preview saved on this phone (permanent app storage): made right

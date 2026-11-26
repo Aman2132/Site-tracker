@@ -4,7 +4,7 @@ import { DeletedPhoto, Photo } from '@/types/domain';
 /**
  * Local capture ids carry their capture time plus a random suffix — two
  * captures inside the same millisecond would otherwise collide and overwrite
- * each other's file and Supabase Storage path.
+ * each other's file and storage path.
  */
 export function newLocalPhotoId(
   takenAt: number,

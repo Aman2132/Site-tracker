@@ -1,40 +1,123 @@
-import {
-  addDoc,
-  collection,
-  getDocs,
-  limit,
-  orderBy,
-  query,
-  QueryConstraint,
-  where,
-} from 'firebase/firestore';
+import { File, UploadType } from 'expo-file-system';
+import { collection, getDocs, limit, orderBy, query, QueryConstraint, where } from 'firebase/firestore';
 
-import { firestore } from './firebaseClient';
-import { supabase } from './supabaseClient';
+import { auth, firestore } from './firebaseClient';
 
+import { PHOTO_UPLOAD } from '@/constants/config';
 import { Photo } from '@/types/domain';
-
-/*
- * 🚨🚨🚨 READ BEFORE ADDING ANY "DELETE PHOTO" CODE 🚨🚨🚨
- *
- * ❗ A photo is TWO files + ONE Firestore record, and all three must be deleted
- *    together: the original file, the `_thumb.jpg` thumbnail, AND the Firestore
- *    record (it holds the path / URL). Delete only one and you leave a BROKEN
- *    IMAGE (record without file) or an ORPHAN FILE (file without record).
- *
- *    The project owner left this note for themselves.
- *    Checklist: docs/READ-BEFORE-BUILDING-PHOTO-DELETION.md
- *    Also: firestore.rules currently blocks deleting photos — that must change.
- */
 
 const PHOTOS_COLLECTION = 'photos';
 const RECENT_PHOTOS_LIMIT = 60;
 
-// Supabase Storage bucket — create it once in the Supabase dashboard
-// (Storage -> New bucket -> name it "Photos", mark it Public so
-// getPublicUrl() below resolves to a working image URL). Bucket names are
-// case-sensitive; this must match exactly what's in the Supabase dashboard.
-const PHOTOS_BUCKET = 'Photos';
+type UploadTarget = { url: string; headers: Record<string, string> };
+
+function isLocalHttpOrigin(origin: string): boolean {
+  const host = /^http:\/\/([a-z\d.]+)(?::\d+)?$/i.exec(origin)?.[1]?.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  if (!host || !/^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(host)) return false;
+
+  const octets = host.split('.').map(Number);
+  if (octets.some(octet => octet > 255)) return false;
+  const [first, second] = octets;
+  return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
+}
+
+function readTarget(value: unknown): UploadTarget {
+  if (
+    value == null ||
+    typeof value !== 'object' ||
+    !('url' in value) ||
+    typeof value.url !== 'string' ||
+    !value.url.startsWith('https://') ||
+    !('headers' in value) ||
+    value.headers == null ||
+    typeof value.headers !== 'object' ||
+    Array.isArray(value.headers) ||
+    Object.values(value.headers).some(header => typeof header !== 'string')
+  ) {
+    throw new Error('The photo service returned invalid upload instructions.');
+  }
+  return { url: value.url, headers: value.headers as Record<string, string> };
+}
+
+async function requestUpload(
+  personId: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const user = auth.currentUser;
+  if (!user || user.uid !== personId)
+    throw new Error('Sign in as the person who took this photo to sync it.');
+  const origin = PHOTO_UPLOAD.apiOrigin.replace(/\/+$/, '');
+  const httpsOrigin = /^https:\/\/[^/?#]+$/i.test(origin);
+  const localDebugOrigin = __DEV__ && isLocalHttpOrigin(origin);
+  if (!httpsOrigin && !localDebugOrigin)
+    throw new Error('Use an HTTPS photo server or a local HTTP server in an Android debug build.');
+  const token = await user.getIdToken();
+  let response: Response;
+  try {
+    response = await fetch(origin + PHOTO_UPLOAD.endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error('Could not reach the photo upload service.');
+  }
+  if (!response.ok) throw new Error(`The photo upload service rejected the request (${response.status}).`);
+  const result: unknown = await response.json();
+  if (result == null || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('The photo service returned an invalid response.');
+  }
+  return result as Record<string, unknown>;
+}
+
+function readCapture(uri: string) {
+  const file = new File(uri);
+  if (!file.exists) throw new Error('Could not read the saved capture.');
+  const bytes = file.size;
+  if (!Number.isSafeInteger(bytes) || bytes <= 0)
+    throw new Error('The saved capture is empty or unreadable.');
+  return { file, bytes };
+}
+
+async function uploadToStorage(target: UploadTarget, file: File): Promise<void> {
+  let status: number;
+  try {
+    // Stream the file from app storage through the native upload task.
+    const response = await file.upload(target.url, {
+      httpMethod: 'PUT',
+      uploadType: UploadType.BINARY_CONTENT,
+      headers: target.headers,
+    });
+    status = response.status;
+  } catch {
+    // The network error may include the signed URL. Report the failure without it.
+    throw new Error('Could not reach photo storage.');
+  }
+  // A previous attempt may already have uploaded this object. Finalization
+  // verifies the object at its authorized key before recording the capture.
+  if ((status < 200 || status >= 300) && status !== 412)
+    throw new Error(`Photo storage refused the upload (${status}).`);
+}
+
+function uploadMetadata(photo: Photo) {
+  return {
+    lat: photo.lat,
+    lng: photo.lng,
+    accuracy: photo.accuracy,
+    ...(photo.altitude != null ? { altitude: photo.altitude } : {}),
+    ...(photo.heading != null ? { heading: photo.heading } : {}),
+    plusCode: photo.plusCode,
+    takenAt: photo.takenAt,
+    ...(photo.personName != null ? { personName: photo.personName } : {}),
+    ...(photo.siteId != null ? { siteId: photo.siteId } : {}),
+    ...(photo.width != null && photo.height != null ? { width: photo.width, height: photo.height } : {}),
+    task: photo.task,
+    ...(photo.note ? { note: photo.note } : {}),
+    ...(photo.inventoryId ? { inventoryId: photo.inventoryId } : {}),
+    ...(photo.durationMs != null ? { durationMs: photo.durationMs } : {}),
+  };
+}
 
 /**
  * One-shot fetch used to seed the Photos screens (live updates aren't needed here — new
@@ -53,69 +136,42 @@ export async function fetchPhotos(personId?: string): Promise<Photo[]> {
   return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as Omit<Photo, 'id'>) }));
 }
 
-/** Uploads one small preview next to the original and returns its public URL. */
-async function uploadThumbnail(photo: Photo, thumbUri: string): Promise<string> {
-  const body = await (await fetch(thumbUri)).arrayBuffer();
-  const path = `${photo.personId}/${photo.id}_thumb.jpg`;
-  const { error } = await supabase.storage
-    .from(PHOTOS_BUCKET)
-    .upload(path, body, { contentType: 'image/jpeg', upsert: true });
-  if (error) throw error;
-  return supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
-}
-
 /**
- * Uploads each queued photo or video to Supabase Storage, then writes its
- * metadata to Firestore. `thumbUris` maps a photo id to a small local preview
- * (made on the phone, see thumbnailService) which is uploaded alongside it so
- * the admin dashboard can show a gallery without pulling every original.
+ * Upload each queued capture straight to R2, then ask the photo service to
+ * verify the files and save the Firestore record. A failure leaves the local
+ * capture queued so it can get fresh URLs and retry.
  */
 export async function uploadPhotos(photos: Photo[], thumbUris: Record<string, string> = {}): Promise<void> {
   for (const photo of photos) {
-    // arrayBuffer(), not blob() — RN's Blob polyfill silently truncates
-    // large files on Android, arrayBuffer() doesn't have that problem. It
-    // reads the whole file into memory, which is why videos are length-capped
-    // (CAMERA.maxVideoSeconds) until uploads can stream.
-    const response = await fetch(photo.uri);
-    const body = await response.arrayBuffer();
-    const isVideo = photo.mediaType === 'video';
-    const path = `${photo.personId}/${photo.id}.${isVideo ? 'mp4' : 'jpg'}`;
+    const mediaType = photo.mediaType ?? 'photo';
+    const original = readCapture(photo.uri);
+    const thumbUri = mediaType === 'photo' ? thumbUris[photo.id] : undefined;
+    const thumbnail = thumbUri ? readCapture(thumbUri) : undefined;
+    const capture = {
+      captureId: photo.id,
+      mediaType,
+      originalBytes: original.bytes,
+      ...(thumbnail ? { thumbnailBytes: thumbnail.bytes } : {}),
+      revision: photo.localStamp?.renderedNote ?? '',
+    };
+    const prepared = await requestUpload(photo.personId, { action: 'prepare', ...capture });
+    if (prepared.completed === true) continue;
 
-    const { error: uploadError } = await supabase.storage
-      .from(PHOTOS_BUCKET)
-      .upload(path, body, { contentType: isVideo ? 'video/mp4' : 'image/jpeg', upsert: true });
-    if (uploadError) throw uploadError;
+    const { uploadWindow } = prepared;
+    if (typeof uploadWindow !== 'number' || !Number.isSafeInteger(uploadWindow) || uploadWindow < 0) {
+      throw new Error('The photo service returned an invalid upload window.');
+    }
+    const originalTarget = readTarget(prepared.original);
+    const thumbnailTarget = thumbnail ? readTarget(prepared.thumbnail) : undefined;
+    await uploadToStorage(originalTarget, original.file);
+    if (thumbnail && thumbnailTarget) await uploadToStorage(thumbnailTarget, thumbnail.file);
 
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(path);
-    const thumbUri = thumbUris[photo.id];
-    const thumbUrl = thumbUri ? await uploadThumbnail(photo, thumbUri) : undefined;
-
-    await addDoc(collection(firestore, PHOTOS_COLLECTION), {
-      uri: publicUrl,
-      lat: photo.lat,
-      lng: photo.lng,
-      accuracy: photo.accuracy,
-      ...(photo.altitude != null ? { altitude: photo.altitude } : {}),
-      ...(photo.heading != null ? { heading: photo.heading } : {}),
-      plusCode: photo.plusCode,
-      takenAt: photo.takenAt,
-      personId: photo.personId,
-      // Firestore rejects `undefined`, so only send it when the capture has one
-      // (older queued photos from before this field existed won't).
-      ...(photo.personName != null ? { personName: photo.personName } : {}),
-      ...(photo.siteId != null ? { siteId: photo.siteId } : {}),
-      ...(photo.width != null && photo.height != null ? { width: photo.width, height: photo.height } : {}),
-      ...(thumbUrl ? { thumbUrl } : {}),
-      task: photo.task,
-      ...(photo.note ? { note: photo.note } : {}),
-      ...(photo.inventoryId ? { inventoryId: photo.inventoryId } : {}),
-      mediaType: photo.mediaType ?? 'photo',
-      // Firestore rejects `undefined` field values outright, so only send a
-      // duration when there is one (photos have none).
-      ...(photo.durationMs != null ? { durationMs: photo.durationMs } : {}),
-      synced: true,
+    const finalized = await requestUpload(photo.personId, {
+      action: 'complete',
+      ...capture,
+      uploadWindow,
+      photo: uploadMetadata(photo),
     });
+    if (finalized.completed !== true) throw new Error('The photo service did not confirm the upload.');
   }
 }

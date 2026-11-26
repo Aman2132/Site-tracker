@@ -14,7 +14,7 @@ App.tsx                  Navigation root
 src/types/                Domain models + navigation param lists
 src/constants/            theme.ts, config.ts, mockData.ts (seed script source)
 src/api/                  Backend boundary — Firebase (Firestore + Realtime DB) for
-                          everything except photo files, which are Supabase Storage
+                          everything except photo files, which use Cloudflare R2
 src/services/             Device integration + auth/push: location, camera EXIF,
                           local photo database, storage, permissions, authService,
                           pushService
@@ -40,7 +40,7 @@ Uses `react-native-vision-camera`, `react-native-maps` (Google Maps), `expo-sens
 is a custom dev-client build, not the managed Expo Go workflow.
 
 ```
-cp .env.example .env   # fill in your Google Maps + Firebase + Supabase config, see .env.example
+cp .env.example .env   # fill in your Google Maps and Firebase config
 npm install
 npx expo prebuild -p android
 npm run android
@@ -59,13 +59,10 @@ npm run lint        # eslint
 npm test            # jest
 ```
 
-## Backend setup (Firebase + Supabase)
+## Backend setup (Firebase and Cloudflare R2)
 
 Identity, roster, photo metadata, events, and live positions are all Firebase.
-Photo **files** live in Supabase Storage instead of Firebase Storage — Firebase Storage
-started requiring a billing account (Blaze) for every project, even at free-tier usage,
-as of Feb 2026, while Supabase's free tier (1 GB) needs no card. Everything else stays
-on Firebase, still free with no card required.
+New photo files live in Cloudflare R2. Existing photo links from either R2 or Supabase continue to work.
 
 ### Firebase
 
@@ -74,7 +71,7 @@ on Firebase, still free with no card required.
    one) and copy the config values into `.env` (see `.env.example`).
 3. Enable **Authentication -> Email/Password**, **Firestore**, and **Realtime Database**
    from the left nav (each has a "get started" button — production/locked mode is fine,
-   the rules already in this repo cover it). Don't enable Storage — that's Supabase now.
+   the rules already in this repo cover it). The app stores files separately in R2.
 4. Deploy the security rules and indexes (requires `npm install -g firebase-tools` then
    `firebase login` once): `firebase deploy --only firestore:rules,firestore:indexes,database`.
    **Do this before anyone signs in or signs up** — the rules in this repo are what stop a
@@ -96,23 +93,11 @@ on Firebase, still free with no card required.
    `people/{uid}` profile docs. Keep the service account key out of
    git — it's a permanent admin credential, already covered by `.gitignore`.
 
-### Supabase (photo storage only)
+### Cloudflare R2 photo uploads
 
-1. Create a project at [supabase.com](https://supabase.com) — no card required.
-2. **Storage** (left nav) -> **New bucket** -> name it `Photos` (bucket names are
-   case-sensitive — must match `PHOTOS_BUCKET` in `src/api/photosApi.ts` exactly) -> mark
-   it **Public** (so `getPublicUrl()` resolves to a working image URL — Firestore's own
-   `photos` collection rules still gate who can see photo *metadata*, this only affects
-   the raw image file).
-3. **Project Settings -> Data API** -> copy the **Project URL**, and **Project Settings ->
-   API Keys** -> copy the **Publishable key** (Supabase's newer name for what used to be
-   called the "anon key" — not the Secret key, which has privileged access) -> both into
-   `.env` (see `.env.example`).
-4. The publishable key only allows uploads into the public `Photos` bucket — there's no
-   per-user write restriction the way Firestore/Realtime Database have (Supabase's
-   row-level security keys off *its own* auth, and this app authenticates through
-   Firebase, not Supabase). Fine for a demo/small-team rollout; tighten before scaling
-   up if that matters for your use case.
+Configure the R2 credentials and Firebase Admin credentials on the Next.js dashboard and deploy its `/api/photos/upload` route before releasing this app build. The phone verifies its session with the dashboard API, then uploads the original and thumbnail directly to R2. The dashboard verifies the files and saves the Firestore record.
+
+The phone defaults to `https://site-tracker-admin-web.vercel.app`. Set `EXPO_PUBLIC_PHOTO_UPLOAD_API_URL` in `.env` only if using another HTTPS dashboard origin. Keep storage keys on the server. If the dashboard is unavailable, captures stay on the phone and retry when the connection returns.
 
 ## Building a real install (EAS)
 
@@ -174,19 +159,7 @@ What it does:
   recognition (local native module in `modules/activity-recognition`) when it has a fresh,
   confident reading, else from GPS speed (`utils/activity.ts`). iOS, or a worker who refuses
   the "Physical activity" permission, gets the speed fallback.
-- **The Supabase `Photos` bucket has no per-user write restriction.** Firestore and
-  Realtime Database enforce "a worker can only write their own data" via security rules
-  keyed off Firebase Auth's `request.auth.uid`; Supabase's row-level security keys off
-  *its own* auth instead, which this app doesn't use (see "Backend setup" above). Anyone
-  with the publishable key (shipped in the client bundle, same as every other config value here)
-  can currently write into any `photos/{personId}/` path, not just their own. Fine for a
-  demo or small trusted crew; closing it for real means either a Supabase Edge Function
-  that verifies the caller's Firebase ID token before allowing an upload, or moving photo
-  storage back to Firebase Storage once a Blaze billing account is acceptable.
-
-  Note that photo **metadata** is already isolated — `firestore.rules` lets the owner read
-  every photo doc and a worker only their own. It's the raw files in the public bucket that
-  are still open. See `PROJECT_OVERVIEW.md` §9.2.
+- **Photo delivery URLs are public with the current R2 setup.** Firestore still controls who can read photo records. Prior app builds can continue uploading to Supabase during rollout, so keep those records and storage accessible until the remaining uploads are reconciled.
 
 ## Admin login
 

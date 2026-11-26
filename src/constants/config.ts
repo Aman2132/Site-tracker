@@ -249,19 +249,12 @@ export const FIREBASE_CONFIG = {
 // real value is set — making it the reliable check here.
 export const HAS_FIREBASE_CONFIG = FIREBASE_CONFIG.projectId.length > 0;
 
-/**
- * Supabase config — used only for Storage (photo files), see
- * api/supabaseClient.ts. Firebase Storage started requiring a billing
- * account (Blaze) for every project, including free-tier usage, as of
- * Feb 2026; everything else (Auth, Firestore, Realtime Database) stays on
- * Firebase, which is still free with no card required.
- */
-export const SUPABASE_CONFIG = {
-  url: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
-  publishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
+/** Public origin of the dashboard API that signs and completes R2 uploads. */
+export const PHOTO_UPLOAD = {
+  apiOrigin: process.env.EXPO_PUBLIC_PHOTO_UPLOAD_API_URL?.trim() ||
+    'https://site-tracker-admin-web.vercel.app',
+  endpoint: '/api/photos/upload',
 } as const;
-
-export const HAS_SUPABASE_CONFIG = SUPABASE_CONFIG.url.length > 0;
 
 /** Items tab: what the crew receive at a site. */
 export const INVENTORY = {

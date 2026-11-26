@@ -12,8 +12,8 @@ import { FIREBASE_CONFIG } from '@/constants/config';
  * photos metadata, events); Realtime Database holds live crew positions,
  * since its free tier is bandwidth-based rather than per-read, which fits
  * frequent small position writes far better than Firestore's read/write
- * quotas do. Photo files themselves live in Supabase Storage, not Firebase
- * — see api/supabaseClient.ts for why.
+ * quotas do. Photo files live in Cloudflare R2, while their URLs and capture
+ * metadata stay in Firestore.
  */
 const app: FirebaseApp = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
 

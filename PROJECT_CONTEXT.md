@@ -7,7 +7,7 @@ Sibling repo: the admin web dashboard, `C:\Projects\Perso\site-tracker-admin` (N
 
 - Expo SDK 57 / React Native 0.86 / TypeScript strict, Android custom dev client, New Architecture only.
 - Two roles from `people/{uid}.appRole`: **worker** (check in, share location, geotagged photos, log items) and **owner/superadmin** (live crew map, all photos, crew management, activity).
-- Backend: Firebase Auth + Firestore + Realtime DB (live positions) + **Supabase Storage** (photo files). Sites/projects/assignments are created in the dashboard.
+- Backend: Firebase Auth + Firestore + Realtime DB (live positions) + **Cloudflare R2** (new uploads through the dashboard signing API). Older Supabase photo URLs remain readable during rollout. Sites/projects/assignments are created in the dashboard.
 - Layering: screens → one controller hook → api / services / store; no inline magic values (`theme.ts`, `config.ts`).
 - **Offline-first photos**: the only copy is in app storage until it syncs.
 
@@ -59,6 +59,8 @@ finish the reply with one line (short, to respect the short-reply rule), e.g.:
 
 | Date       | Change                                                                                                                          | Docs updated  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 2026-11-26 | Allowed Android debug uploads to use the local dashboard over loopback or private Wi-Fi with a development-only environment override. | yes |
+| 2026-11-26 | Android uploads originals and thumbnails directly to R2 with URLs issued by the dashboard API, preserving the offline queue and legacy Supabase reads. | yes |
 | 2026-11-18 | New Android captures burn notes, GPS and capture time into an image footer offline; originals retained for edits, stamped thumbnails/upload, older photos untouched. | yes |
 | 2026-11-05 | Added EXIF camera heading (GPSImgDirection) and GNSS true altitude (GPSAltitude) to photo captures.                             | yes           |
 | 2026-11-04 | Added Graphify codebase knowledge graph integration (`graphify-out/GRAPH_REPORT.md`) to `AGENTS.md` and `PROJECT_CONTEXT.md`.   | yes           |
